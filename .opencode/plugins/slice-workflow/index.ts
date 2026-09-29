@@ -146,17 +146,101 @@ function getText(messages: readonly unknown[]): string {
     .join('\n');
 }
 
-function modelReferences(entries: readonly unknown[]): string {
-  return entries
-    .flatMap((entry) => {
-      const candidate = entry as {
-        id: string;
-        providerID: string;
-        variants?: { id: string }[];
-      };
-      const model = `${candidate.providerID}/${candidate.id}`;
-      return [model, ...(candidate.variants ?? []).map((variant) => `${model}#${variant.id}`)];
-    })
+interface ModelSummary {
+  cost?: { tier?: { size: number }; input: number; output: number }[];
+  id: string;
+  limit?: { context?: number };
+  name?: string;
+  providerID: string;
+  status?: string;
+  time?: { released?: number };
+  variants?: { id: string }[];
+}
+
+interface PickOption {
+  category?: string;
+  description?: string;
+  footer?: string;
+  title: string;
+}
+
+const MAX_MODELS_PER_PROVIDER = 8;
+const MAX_SHORTLIST_MODELS = 12;
+const PICKER_TIMEOUT_MS = 120_000;
+
+function modelRef(model: ModelSummary): string {
+  return `${model.providerID}/${model.id}`;
+}
+
+function formatMoney(value: number): string {
+  if (!Number.isFinite(value)) return '?';
+  if (value === 0) return '0';
+  if (value < 0.01) return value.toExponential(1);
+  return value
+    .toFixed(2)
+    .replace(/0+$/, '')
+    .replace(/\.$/, '');
+}
+
+function modelTitle(model: ModelSummary): string {
+  const name = model.name?.trim();
+  if (!name) return modelRef(model);
+  return name.split(/\s+/).length <= 5 ? name : modelRef(model);
+}
+
+function modelHint(model: ModelSummary): string {
+  const parts: string[] = [];
+  const cost = model.cost?.[0];
+  if (!cost) parts.push('price not listed');
+  else if (cost.input === 0 && cost.output === 0) parts.push('free');
+  else parts.push(`$${formatMoney(cost.input)} in / $${formatMoney(cost.output)} out per Mtok`);
+  const tier = model.cost?.find((entry) => entry.tier)?.tier?.size;
+  if (tier) parts.push(`higher price past ${Math.round(tier / 1_000)}K tokens`);
+  if (model.limit?.context) parts.push(`${Math.round(model.limit.context / 1_000)}K context`);
+  if (model.variants?.length) parts.push(`${model.variants.length} reasoning levels`);
+  if (model.time?.released) parts.push(new Date(model.time.released).toISOString().slice(0, 7));
+  return parts.join(' - ');
+}
+
+function disambiguateTitles(models: readonly ModelSummary[]): string[] {
+  const counts = new Map<string, number>();
+  for (const model of models) {
+    const title = modelTitle(model);
+    counts.set(title, (counts.get(title) ?? 0) + 1);
+  }
+  return models.map((model) => {
+    const title = modelTitle(model);
+    return (counts.get(title) ?? 0) > 1 ? `${title} (${model.providerID})` : title;
+  });
+}
+
+function shortlistModels(entries: readonly unknown[]): ModelSummary[] {
+  const byProvider = new Map<string, ModelSummary[]>();
+  for (const entry of entries as readonly ModelSummary[]) {
+    if (entry.status !== 'active') continue;
+    const bucket = byProvider.get(entry.providerID);
+    if (bucket) bucket.push(entry);
+    else byProvider.set(entry.providerID, [entry]);
+  }
+  const ranked = [...byProvider.values()].flatMap((bucket) =>
+    bucket
+      .slice()
+      .sort((a, b) => (b.time?.released ?? 0) - (a.time?.released ?? 0))
+      .slice(0, MAX_MODELS_PER_PROVIDER)
+  );
+  return ranked
+    .sort((a, b) => (b.time?.released ?? 0) - (a.time?.released ?? 0))
+    .slice(0, MAX_SHORTLIST_MODELS);
+}
+
+function modelListText(models: readonly ModelSummary[]): string {
+  if (models.length === 0) return 'No active models are available.';
+  const titles = disambiguateTitles(models);
+  return models
+    .map(
+      (model, index) =>
+        `${titles[index]}\n    ${modelRef(model)}\n    ${modelHint(model)}`
+    )
     .join('\n');
 }
 
@@ -164,11 +248,53 @@ export default Plugin.define({
   id: 'slice-workflow',
   async setup(ctx) {
     let disposed = false;
+    let tuiConnected = false;
     const timers = new Map<string, ReturnType<typeof setTimeout>>();
     const activeLoops = new Map<string, LoopState>();
-    const rpc = await ctx.rpc.register(SliceWorkflowRpc, {});
+    const pendingPicks = new Map<string, (value: string | undefined) => void>();
+    const rpc = await ctx.rpc.register(SliceWorkflowRpc, {
+      tuiReady: async () => {
+        tuiConnected = true;
+        return {};
+      },
+      select: async (input) => {
+        const { requestID, value } = input as { requestID: string; value?: string };
+        const settle = pendingPicks.get(requestID);
+        if (settle) {
+          pendingPicks.delete(requestID);
+          settle(value || undefined);
+        }
+        return {};
+      },
+    });
 
     const isActive = (state: LoopState) => activeLoops.get(state.sessionID) === state;
+
+    const requestPick = async (
+      title: string,
+      options: readonly PickOption[],
+      placeholder?: string
+    ): Promise<string | undefined> => {
+      if (!tuiConnected || options.length === 0) return undefined;
+      const requestID = crypto.randomUUID();
+      let settle: (value: string | undefined) => void = () => {};
+      const answer = new Promise<string | undefined>((resolve) => {
+        settle = resolve;
+      });
+      pendingPicks.set(requestID, settle);
+      const timer = setTimeout(() => {
+        if (pendingPicks.delete(requestID)) settle(undefined);
+      }, PICKER_TIMEOUT_MS);
+      try {
+        await rpc.events.emit('pick', { requestID, title, options, placeholder });
+        return await answer;
+      } catch {
+        return undefined;
+      } finally {
+        clearTimeout(timer);
+        pendingPicks.delete(requestID);
+      }
+    };
 
     const notify = async (
       sessionID: string,
@@ -298,7 +424,6 @@ export default Plugin.define({
         description: 'Assign a validated OpenCode model to a slice workflow role',
         execute: async ({ prompt, sessionID }) => {
           const argumentsList = tokenize(prompt.text);
-          const [role, model] = argumentsList;
           const roles = {
             design: ['slice-design-readonly', 'slice-design-edit'],
             implement: [
@@ -308,45 +433,78 @@ export default Plugin.define({
             ],
             review: ['slice-review-fix', 'slice-review-audit'],
           } as const;
+          const roleName = argumentsList[0];
+          let model = argumentsList[1];
 
-          if (!role) {
-            const configPath = join(ctx.location.project.directory, '.opencode', 'opencode.json');
-            const config = JSON.parse(await readFile(configPath, 'utf8')) as WorkflowConfig;
-            const assignments = Object.entries(roles)
-              .map(([name, agentIDs]) => {
-                const models = agentIDs.map((agentID) => config.agents?.[agentID]?.model ?? 'inherits parent');
-                return `${name}: ${[...new Set(models)].join(', ')}`;
-              })
-              .join('\n');
-            await ctx.session.synthetic({
-              sessionID,
-              text: `${assignments}\n\nUsage: /slice-model <design|implement|review> <provider/model[#variant]>`,
-            });
-            return;
+          if (roleName && !(roleName in roles)) {
+            throw new Error('Role must be design, implement, or review');
           }
-          if (!(role in roles)) throw new Error('Role must be design, implement, or review');
           if (argumentsList.length > 2) {
             throw new Error('Usage: /slice-model <design|implement|review> <provider/model[#variant]>');
           }
 
+          const configPath = join(ctx.location.project.directory, '.opencode', 'opencode.json');
+          const usage =
+            'Usage: /slice-model <design|implement|review> <provider/model[#variant]>';
+
+          let role = roleName;
+          if (!role) {
+            const config = JSON.parse(await readFile(configPath, 'utf8')) as WorkflowConfig;
+            const assignments = Object.entries(roles)
+              .map(([name, agentIDs]) => {
+                const models = agentIDs.map(
+                  (agentID) => config.agents?.[agentID]?.model ?? 'inherits parent'
+                );
+                return `${name}: ${[...new Set(models)].join(', ')}`;
+              })
+              .join('\n');
+            const picked = await requestPick(
+              'Assign a model to which slice role?',
+              Object.entries(roles).map(([name, agentIDs]) => ({
+                title: name,
+                description: `Sets one model on ${agentIDs.join(', ')}`,
+              }))
+            );
+            if (!picked || !(picked in roles)) {
+              await ctx.session.synthetic({ sessionID, text: `${assignments}\n\n${usage}` });
+              return;
+            }
+            role = picked;
+          }
+
           const { data: available } = await ctx.model.list();
+          const shortlist = shortlistModels(available);
           if (!model) {
-            await ctx.session.synthetic({
-              sessionID,
-              text: `Available models:\n${modelReferences(available)}`,
-            });
-            return;
+            const titles = disambiguateTitles(shortlist);
+            const picked = await requestPick(
+              `Model for the ${role} role`,
+              shortlist.map((entry, index) => ({
+                category: entry.providerID,
+                description: modelHint(entry),
+                footer: modelRef(entry),
+                title: titles[index],
+              })),
+              'provider/model'
+            );
+            if (!picked) {
+              await ctx.session.synthetic({
+                sessionID,
+                text: `${modelListText(shortlist)}\n\nAssign with: /slice-model ${role} <provider/model[#variant]>`,
+              });
+              return;
+            }
+            model = picked;
           }
 
           const modelParts = model.split('#');
           if (modelParts.length > 2 || modelParts.some((part) => !part)) {
             throw new Error('Model must use provider/model[#variant] format');
           }
-          const [modelRef, variant] = modelParts;
-          const slashIndex = modelRef.indexOf('/');
+          const [modelReference, variant] = modelParts;
+          const slashIndex = modelReference.indexOf('/');
           if (slashIndex < 1) throw new Error('Model must use provider/model[#variant] format');
-          const providerID = modelRef.slice(0, slashIndex);
-          const modelID = modelRef.slice(slashIndex + 1);
+          const providerID = modelReference.slice(0, slashIndex);
+          const modelID = modelReference.slice(slashIndex + 1);
           const selected = available.find((entry) => {
             const candidate = entry as { id: string; providerID: string; variants?: { id: string }[] };
             return (
@@ -357,7 +515,6 @@ export default Plugin.define({
           });
           if (!selected) throw new Error(`Model is not available: ${model}`);
 
-          const configPath = join(ctx.location.project.directory, '.opencode', 'opencode.json');
           const lockPath = `${configPath}.slice-model.lock`;
           const temporaryPath = `${configPath}.${crypto.randomUUID()}.tmp`;
           try {
@@ -454,6 +611,8 @@ export default Plugin.define({
       for (const timer of timers.values()) clearTimeout(timer);
       timers.clear();
       activeLoops.clear();
+      for (const settle of pendingPicks.values()) settle(undefined);
+      pendingPicks.clear();
     };
   },
 });
