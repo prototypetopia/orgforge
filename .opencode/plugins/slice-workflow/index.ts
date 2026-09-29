@@ -164,8 +164,6 @@ interface PickOption {
   title: string;
 }
 
-const MAX_MODELS_PER_PROVIDER = 8;
-const MAX_SHORTLIST_MODELS = 12;
 const PICKER_TIMEOUT_MS = 120_000;
 
 function modelRef(model: ModelSummary): string {
@@ -190,6 +188,7 @@ function modelTitle(model: ModelSummary): string {
 
 function modelHint(model: ModelSummary): string {
   const parts: string[] = [];
+  if (model.status && model.status !== 'active') parts.push(model.status);
   const cost = model.cost?.[0];
   if (!cost) parts.push('price not listed');
   else if (cost.input === 0 && cost.output === 0) parts.push('free');
@@ -214,27 +213,15 @@ function disambiguateTitles(models: readonly ModelSummary[]): string[] {
   });
 }
 
-function shortlistModels(entries: readonly unknown[]): ModelSummary[] {
-  const byProvider = new Map<string, ModelSummary[]>();
-  for (const entry of entries as readonly ModelSummary[]) {
-    if (entry.status !== 'active') continue;
-    const bucket = byProvider.get(entry.providerID);
-    if (bucket) bucket.push(entry);
-    else byProvider.set(entry.providerID, [entry]);
-  }
-  const ranked = [...byProvider.values()].flatMap((bucket) =>
-    bucket
-      .slice()
-      .sort((a, b) => (b.time?.released ?? 0) - (a.time?.released ?? 0))
-      .slice(0, MAX_MODELS_PER_PROVIDER)
-  );
-  return ranked
-    .sort((a, b) => (b.time?.released ?? 0) - (a.time?.released ?? 0))
-    .slice(0, MAX_SHORTLIST_MODELS);
+function listModels(entries: readonly unknown[]): ModelSummary[] {
+  return (entries as readonly ModelSummary[]).slice().sort((a, b) => {
+    if (a.providerID !== b.providerID) return a.providerID.localeCompare(b.providerID);
+    return (a.name ?? a.id).localeCompare(b.name ?? b.id);
+  });
 }
 
 function modelListText(models: readonly ModelSummary[]): string {
-  if (models.length === 0) return 'No active models are available.';
+  if (models.length === 0) return 'No models are available.';
   const titles = disambiguateTitles(models);
   return models
     .map(
@@ -473,23 +460,23 @@ export default Plugin.define({
           }
 
           const { data: available } = await ctx.model.list();
-          const shortlist = shortlistModels(available);
+          const models = listModels(available);
           if (!model) {
-            const titles = disambiguateTitles(shortlist);
+            const titles = disambiguateTitles(models);
             const picked = await requestPick(
-              `Model for the ${role} role`,
-              shortlist.map((entry, index) => ({
+              `Model for the ${role} role (${models.length} available)`,
+              models.map((entry, index) => ({
                 category: entry.providerID,
                 description: modelHint(entry),
                 footer: modelRef(entry),
                 title: titles[index],
               })),
-              'provider/model'
+              'Search models'
             );
             if (!picked) {
               await ctx.session.synthetic({
                 sessionID,
-                text: `${modelListText(shortlist)}\n\nAssign with: /slice-model ${role} <provider/model[#variant]>`,
+                text: `${modelListText(models)}\n\nAssign with: /slice-model ${role} <provider/model[#variant]>`,
               });
               return;
             }
