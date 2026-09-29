@@ -138,8 +138,9 @@ Review only facets applicable to the slice:
   integration, edge, failure, and migration risk maps to an outcome-focused
   scenario, authoritative test tier or check, and exact command found in
   `TESTS.md`, package scripts, or repository conventions;
-- safety where applicable: authorization, tenant or ownership isolation, PHI
-  handling and logging, IAM/resource access, and external-contract constraints;
+- safety where applicable: destructive-change protection (`protect`,
+  `closeOnDeletion`, retain sequencing), layer purity, pinned-provider limits,
+  secret handling, and external-contract constraints;
 - completeness: likely touchpoints, dependencies, edge cases, failure behavior,
   and enabled follow-up slices.
 
@@ -193,8 +194,9 @@ Before responding, confirm:
    boilerplate. Every acceptance criterion and applicable risk maps to an
    outcome-focused scenario and authoritative tier or check; every proposed
    command exactly matches a governing source. No code check is claimed executed.
-4. Applicable security, privacy, PHI/logging, access, external-contract, and
-   compatibility concerns are addressed from evidence rather than templates.
+4. Applicable safety, secret-handling, layer-purity, provider-version, access,
+   external-contract, and compatibility concerns are addressed from evidence
+   rather than templates.
 5. A semantic comparison with the current plan preserves every unrelated or
    still-authorized requirement, decision, dependency, acceptance criterion,
    verification obligation, and edge case. If the checklist is included, its

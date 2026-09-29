@@ -69,24 +69,22 @@ Where `<NN>` can be `2` or `02` (normalize to 2 digits).
 Update any of these whose content is now stale or incomplete relative to the
 slice:
 
-- Per-feature READMEs: `backend/features/<feature>/README.md`, including nested
-  sub-feature READMEs (e.g.
-  `backend/features/visit-summary/get-visit-summary/README.md`).
-- Per-domain READMEs: `backend/domains/<entity>/README.md` (e.g.
-  `backend/domains/patient-gap/README.md`) — when the slice changes that
-  entity's types, operations, or DB access patterns.
-- `docs/architecture.md` — when the slice adds or changes a component, data
-  flow, or cross-cutting pattern.
-- SDK package docs — `packages/provider-copilot-sdk/README.md` and
-  `packages/provider-copilot-sdk/SDK_REFERENCE.md` — when the slice changes the
-  SDK's public surface: classes/methods, exported types, realtime events,
-  lifecycle, or usage rules. (`SDK_REFERENCE.md` is a compact reference tightly
-  coupled to the SDK's public TypeScript API; backend API-contract changes that
-  flow through to the SDK belong here too.)
+- Per-capability READMEs, colocated with the source directory they describe
+  (e.g. `src/organization/README.md`, `src/deployments/README.md`,
+  `src/identity-center/README.md`).
+- `README.md` at the repo root — when the slice changes install, auth,
+  configuration, or the operating commands (`pnpm deploy`, `pulumi preview`).
+- `docs/architecture.md` — when the slice adds or changes a layer, a component,
+  a data flow, or a cross-cutting pattern. Keep the five-layer diagram
+  (`AGENTS.md`) accurate: if the slice changes where a concern belongs, that
+  doc is stale.
+- Operational runbooks — when the slice changes a documented procedure:
+  account decommissioning, deployment retain/unprotect sequencing, drift
+  handling, or the secret-handling strategy.
 
-If the slice introduced a brand-new feature or domain folder with no README,
-create one following the existing per-feature / per-domain README pattern (read
-a sibling README first to match its structure).
+If the slice introduced a brand-new capability directory with no README, create
+one following the existing pattern (read a sibling README first to match its
+structure).
 
 ### Tier 2 — approval-gated (never edit unprompted)
 
@@ -100,8 +98,7 @@ a sibling README first to match its structure).
 
 ### Tier 3 — never touch
 
-`AGENTS.md` (root or package, e.g. `packages/provider-copilot-sdk/AGENTS.md`),
-`TESTS.md`, `CLAUDE.md`, the no-longer-used PRDs/ADRs in `docs/`
+`AGENTS.md`, `TESTS.md`, `CLAUDE.md`, the no-longer-used PRDs/ADRs in `docs/`
 (`docs/*-prd.md`, `docs/adr-*.md`), anything under `docs/templates/`, and all
 session docs under `sessions/` (owned by the session skills).
 

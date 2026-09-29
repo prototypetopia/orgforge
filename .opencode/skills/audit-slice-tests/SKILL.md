@@ -59,8 +59,9 @@ Required evidence:
 - In-scope implementation entry points, behavior branches, schemas, persistence,
   external boundaries, infrastructure wiring, and colocated or nearby tests for
   every relevant tier.
-- Direct helpers, constants, models, `*-db.ts` mappings, and
-  `backend/utils/aws-test/` utilities needed to verify assertions.
+- Direct helpers, constants, types, and schemas needed to verify assertions.
+- For Pulumi mock tests, the resource-constructing code and the options it
+  passes.
 
 ## Output Format
 
@@ -154,8 +155,8 @@ When same-subject authoritative sources still conflict, apply Critical Rule 3.
 
 1. Read all required and referenced evidence. Starting from plan touchpoints and
    changed entry points, discover every test pattern and location required under
-   `Source Material`, including `*.unit.test.ts`, `*.int.test.ts`, and
-   `*.e2e.test.ts` where applicable. Use imports and behavior references to
+   `Source Material`, including `*.unit.test.ts` and `*.mock.test.ts` where
+   applicable. Use imports and behavior references to
    establish relevance, then follow direct dependencies only until the behavior
    or assertion is verified.
 2. Internally map every applicable requirement, acceptance criterion, contract,
@@ -168,42 +169,43 @@ When same-subject authoritative sources still conflict, apply Critical Rule 3.
    consumers, optionality, defaults, transformations, persisted or external
    shapes, and the exact test assertions.
 4. Verify tier selection and missing coverage under `Source Material`, using
-   current `TESTS.md` subject to applicable `AGENTS.md` rules. Include isolated
-   logic and schemas, real AWS-backed persistence, and the feature's deployed
-   entry point or async wiring when applicable.
+   current `TESTS.md` subject to applicable `AGENTS.md` rules. This repo has two
+   tiers: pure unit tests (`*.unit.test.ts`) and Pulumi mock tests
+   (`*.mock.test.ts`). Include pure-model logic and validators, and resource
+   construction plus safety options where the slice builds AWS resources. Flag
+   any test requiring a live AWS Organization — that tier does not exist here.
 5. Apply current `TESTS.md` rules and exceptions to each in-scope test:
    - naming, placement, and the code entry point under test;
-   - mock boundaries and mock setup order, including `vi.hoisted()` when required;
-   - synthetic non-PHI fixtures, collision-safe IDs, and targeted cleanup; check
-     fixtures and test configuration for prohibited patient-identifying data,
-     secrets, credentials, tokens, and production-only resource identifiers;
+   - layer placement: unit tests must not import `@pulumi/pulumi` or
+     `@pulumi/aws`; mock tests must not assert pure-model behavior;
+   - for mock tests, `setMocks` presence and the single-runtime-configuration
+     constraint (one file must not both assert resources were created and assert
+     validation prevented creation);
+   - collision-safe logical keys in fixtures; check fixtures and test
+     configuration for secrets, credentials, tokens, and production-only
+     resource identifiers;
    - assertions derived from implementation rather than guessed keys, names,
-     shapes, messages, or metadata;
-   - protected-endpoint auth rejection and network timeout coverage when
-     applicable.
-   Flag tests that codify product, privacy, external-contract, reliability, or
+     shapes, options, messages, or metadata;
+   - safety options (`protect`, `closeOnDeletion`, `dependsOn`) asserted wherever
+     the implementation sets them.
+   Flag tests that codify product, external-contract, reliability, safety, or
    established-pattern behavior without required approval under
    `docs/decision-authority.md`. Report overcomplicated or pattern-breaking test
    approaches against applicable `AGENTS.md` even when the plan permits them.
-6. **AWS side-effect assertions.** For each integration or e2e scenario with an
-   observable AWS-backed side effect after a write, put, publish, or handler
-   invocation:
-   - identify the first assertion after the act step and its actual read path
-     (deterministic point lookup, query/list or GSI, generated-key discovery,
-     object read, message collection, or another service observation);
-   - verify the service-specific `expectAws` helper, setup, assertion, and cleanup
-     required by `TESTS.md`;
-   - require a documented `backend/utils/aws-test/` extension when no helper
-     covers the service;
-   - allow richer direct domain or service re-reads only after the documented
-     `expectAws` assertion has settled;
-   - flag `expectAws.toHave*` in `beforeAll` or `afterAll` when used as a setup or
-     cleanup synchronization barrier.
-7. **Feature integration entrypoint.** For each backend feature integration test,
-   inspect imports and the act step. Verify it invokes the real Lambda handler
-   entry point (`main`, `mainV1`, or equivalent adapter export) when required by
-   `TESTS.md`, rather than directly calling the feature-domain function. Do not
-   apply this rule to entity-domain integration tests.
+6. **Pulumi resource assertions.** For each mock-test scenario asserting on a
+   constructed resource:
+   - verify the captured resource type and Pulumi name derive from the logical
+     key rather than the display name;
+   - verify asserted inputs and options were read from the implementation, not
+     assumed;
+   - flag a resource-option assertion on a value the recorder never captures
+     (options such as `protect` and `dependsOn` are not inputs) unless the test
+     asserts them via the implementation's exported policy helper;
+   - verify Pulumi `Output` values are resolved through the `promiseOf` helper
+     rather than being treated as plain values.
+7. **Purity rule.** For each unit test, inspect imports. Flag any `src/model/`
+   or `src/validation/` test that imports Pulumi — that indicates the logic
+   under test is in the wrong layer.
 8. Inspect recorded plan-required test commands when evidence is available. Do
    not infer that a command was not run from silence or claim a result without
    recorded output. If required verification evidence is unavailable and blocks
@@ -222,8 +224,8 @@ Before responding, confirm:
    evidence or one finding.
 3. Changed behavior, schemas, contracts, callers, and wiring were traced for
    regression coverage, and fixture security rules were applied.
-4. The AWS first-side-effect assertion and backend feature handler procedures
-   were completed whenever applicable.
+4. The Pulumi resource-assertion and purity-rule procedures were completed
+   whenever applicable.
 5. Every item remains present, cites concrete evidence and applicable source
    authority, and has consistent severity, disposition, and the earliest owner.
 6. Consequential unresolved assumptions are blockers, not guesses, and the

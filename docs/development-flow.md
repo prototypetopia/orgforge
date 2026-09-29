@@ -107,7 +107,7 @@ Repeat for the next slice. When the workstream is ready for review:
 ## New workstream bootstrap options
 
 - Use `/session-worktree-setup <slug>` first when you want the workstream to live
-  in its own git worktree (`../provider-copilot-<slug>`) on a `session/<slug>`
+  in its own git worktree (`../orgforge-<slug>`) on a `session/<slug>`
   branch; then run `/session-init` or `/session-resume` from that worktree.
 - Use `/session-init <slug>` for a blank new workstream scaffold.
 - Use `/session-init-from-project <slug>` when you want the new workstream to
@@ -214,7 +214,7 @@ Removing or replacing a supported established pattern is `Needs User Approval`.
 - `/session-worktree-setup <slug>`
   - Use when: starting or resuming a workstream in a dedicated git worktree and
     `session/<slug>` branch, isolated from your main checkout.
-  - Creates: a git worktree at the sibling path `../provider-copilot-<slug>` on
+  - Creates: a git worktree at the sibling path `../orgforge-<slug>` on
     branch `session/<slug>`, based on `origin/main` (or local `main`).
   - Reads: `sessions/<slug>/context.md`, `latest.md`, `decision-log.md`, and
     `<slug>-next-steps.md` (from the branch ref or worktree when they live there)

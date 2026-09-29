@@ -147,23 +147,30 @@ unless a heading is clearly wrong or stale.
 
 ### Serverless Architecture Checks
 
-When relevant to AWS serverless resources, derive each decision from the actual
-trigger, integration, repository pattern, and requirements:
+When relevant to Pulumi resources, derive each decision from the actual trigger,
+repository pattern, and requirements:
 
-- Prefer asynchronous queues or events when latency, decoupling, or non-user-facing
-  work justifies them; do not convert short request/response work by default.
-- Define trigger-specific failure handling: SQS source-queue redrive and applicable
-  partial-batch behavior; EventBridge target retries and DLQ where required; Lambda
-  asynchronous retry, event-age, and failure destination for supported async
-  invocation paths. Do not treat SQS polling as Lambda async invocation.
-- Make idempotency explicit where retries or duplicate delivery are possible.
-- Avoid ad hoc chained Lambda invocations. Use Step Functions only when durable
-  state, branching, retries, visibility, or long-lived coordination justifies it.
-- Scope SST permissions to required actions and resources; avoid broad wildcards.
-- Prefer supported direct service integrations over a Lambda that only forwards
-  when repository patterns and required validation permit it.
-- Size timeout and memory from expected work and platform constraints; do not lock
-  defaults without evidence.
+- Keep the five layers clean. Target resolution, account-set evaluation, OU
+  traversal, dependency analysis, and most validation must not import
+  `@pulumi/pulumi` or `@pulumi/aws`. If a decision needs an AWS account ID to make
+  a logical choice, resolve the account to its logical key instead.
+- Derive Pulumi resource names from stable logical keys, never from display
+  names or raw AWS IDs. Never put a raw AWS ID in human-authored config when a
+  logical reference resolves.
+- Apply safety defaults explicitly: `protect: true` on org-critical resources,
+  `closeOnDeletion: false` on member accounts. Make it evident in the plan when a
+  slice touches protection.
+- Order resources with Pulumi dependency edges and provider/SDK waiters. Do not
+  introduce arbitrary sleeps; document genuinely unavoidable propagation cases.
+- Scope IAM permissions to required actions and resources; avoid broad wildcards.
+- Prefer AWS SDK v3 only where the pinned `@pulumi/aws` lacks the operation or
+  exposes insufficient discovery metadata. Do not introduce
+  `@pulumi/aws-native` to fill provider gaps. Treat provider upgrades as
+  infrastructure changes.
+- When a CloudFormation template is deployed through StackSets, select inline
+  `templateBody` versus S3 `templateUrl` by size **and** content, centralize
+  `NoEcho` parameter handling, and prefer secret references over plaintext secret
+  parameters.
 
 Skip irrelevant checks. These checks do not authorize product semantics or a
 pattern-breaking design. Repository constraints and authorized requirements win;
@@ -212,11 +219,11 @@ Before responding, confirm:
    requirements mode without editing. Every changed command exactly matches
    `TESTS.md`, package scripts, or repository conventions; no code command is
    claimed executed.
-5. Applicable serverless decisions cite actual trigger/integration and repository
-   evidence and cover failure/retry behavior, idempotency, IAM, orchestration,
-   timeout/memory, and deployed wiring verification as relevant. Applicable trust,
-   authorization, tenant, PHI/logging, encryption/resource, external-contract, and
-   failure-data boundaries are addressed without inventing requirements.
+5. Applicable Pulumi decisions cite actual repository evidence and cover layer
+   purity, logical-key naming, protection defaults, dependency ordering, IAM,
+   pinned-provider constraints, and template/secret handling as relevant.
+   Applicable destructive-change, trust, external-contract, and failure-data
+   boundaries are addressed without inventing requirements.
 6. If the checklist changed, only actual or authorized checklist fields changed;
    its dependencies, stage, validation outcome, and acceptance scope remain
    consistent with the final plan.

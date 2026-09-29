@@ -1,4 +1,4 @@
-# AGENTS.md - Provider Co-Pilot
+# AGENTS.md - AWS Organization as Code
 
 This file provides guidance for AI coding agents working in this repository.
 
@@ -12,89 +12,471 @@ This file provides guidance for AI coding agents working in this repository.
 
 When in doubt: fewer files, fewer abstractions, fewer lines of code. Resist the urge to build frameworks when scripts will do.
 
-Feature workflow reference: `docs/development-flow.md` (`/session-init` -> `/prd` -> `/prd-breakdown` -> `/session-plan` -> implement -> `/session-save` -> `/pr`).
+Feature workflow reference: `docs/development-flow.md` (`/session-init` -> `/prd` -> `/refine-prd` -> `/prd-breakdown` -> `/session-plan` -> implement -> `/session-save` -> `/pr`).
+
+---
 
 ## Project Overview
 
-A full-stack healthcare clinical assistant application built with:
-- **Frontend**: React 19, TanStack Router/Start, Mantine UI v8, Vite 7
-- **Backend**: AWS Lambda with Middy, TypeScript, Zod v4
-- **Infrastructure**: SST v4 (Serverless Stack), DynamoDB, S3, EventBridge
-- **Monorepo**: pnpm workspaces + Lerna
+A TypeScript framework for managing an AWS Organization as code using Pulumi. It
+replaces OrgFormation: organizational units, accounts, service control
+policies, Identity Center, and organization-wide CloudFormation deployments are
+declared in TypeScript and applied through Pulumi preview/up.
+
+- **Language**: TypeScript (strict mode)
+- **IaC**: Pulumi — `@pulumi/pulumi` + `@pulumi/aws`
+- **Escape hatch**: AWS SDK for JavaScript v3, used only where `@pulumi/aws`
+  lacks an operation or exposes insufficient metadata for safe discovery
+- **State**: one long-lived Pulumi stack per AWS Organization, on Pulumi Cloud
+  or a DIY (S3) backend
+
+### Non-Goals
+
+Do not introduce the following without a separate architecture decision:
+
+```text
+OrgFormation
+Terraform CLI
+CDKTF
+AWS Control Tower
+AFT (Account Factory for Terraform)
+Landing Zone Accelerator
+SST
+```
+
+Also out of scope:
+
+- Nunjucks templating, custom `!Sub`/`!Join`, generic `Foreach`
+- Shell / Terraform / Serverless / CDK task execution
+- Annotated per-resource CloudFormation compiler recreation
+- Generic task runners, generic CI/CD frameworks, CloudFormation preprocessors
+- Automatic dev/staging/prod copies of one AWS Organization
+
+SST applications, if they ever exist, remain separate infrastructure and state
+boundaries.
+
+---
 
 ## Build/Lint/Test Commands
 
 ```bash
-# Development & Deployment
-pnpm dev                    # Start SST dev mode
-pnpm deploy                 # SST deploy
+# Setup
+pnpm install
 
-# Code Quality
-pnpm lint                   # ESLint all packages
-pnpm lint:fix               # ESLint with auto-fix
-pnpm typecheck              # TypeScript check across workspaces
-pnpm format                 # Prettier format all files
+# Code quality
+pnpm typecheck                # tsc --noEmit
+pnpm lint                     # ESLint
+pnpm lint:fix
+pnpm format                   # Prettier
 
-# Testing
-pnpm test:unit              # Run all unit tests
-pnpm test:unit:fe           # Frontend unit tests only
-pnpm test:int               # Integration tests
-pnpm test:e2e               # E2E tests
+# Tests
+pnpm test:unit                # Pure unit tests (fast, no Pulumi runtime)
+pnpm test:mock                # Pulumi mock tests (setMocks)
+pnpm test                     # Both
+
+# Single test
+pnpm vitest run src/model/account-sets.unit.test.ts
+pnpm vitest run -t "test name pattern"
+
+# Pulumi
+pulumi preview
+pulumi up
+pnpm deploy                   # pulumi up with org-safe defaults
+
+# Config validation (no AWS calls)
+pnpm validate
 ```
 
 ### Running a Single Test
 
 ```bash
-# Backend (requires SST shell for AWS resource access)
-cd backend && LOG_LEVEL=SILENT sst shell -- vitest run path/to/file.unit.test.ts
-cd backend && LOG_LEVEL=SILENT sst shell -- vitest run -t "test name pattern"
+# Pure unit
+pnpm vitest run src/model/ou-paths.unit.test.ts
 
-# Frontend
-cd frontend && pnpm vitest run path/to/file.test.ts
-cd frontend && pnpm vitest run -t "test name pattern"
+# Pulumi mock
+pnpm vitest run src/organization/accounts.mock.test.ts
+
+# By name pattern
+pnpm vitest run -t "should expand nested OUs recursively"
 ```
 
-**Test file naming**: `*.unit.test.ts`, `*.int.test.ts`, `*.e2e.test.ts`
+**Test file naming**: `*.unit.test.ts` (pure logic), `*.mock.test.ts`
+(Pulumi `setMocks`).
 
-**Testing guide**: See `TESTS.md` for comprehensive testing patterns, tier
-selection criteria, and code examples.
+**Testing guide**: See `TESTS.md` for tier selection, the Pulumi mock pattern,
+and the required behavioral test suite.
 
-## Logging
+---
 
-Use `import { log } from '@utils/lambda/powertools-utils'` (AWS Lambda Powertools Logger) for all backend logging.
+## Core Architecture
 
-### PHI Rules
+Five conceptual layers. Code must flow downward, never upward.
 
-`patientId` is PHI and must **never** be logged above `debug` level. If any new patient-identifying fields are added to the codebase (e.g., name, DOB, MRN, SSN, address, phone), they follow the same rule.
+```text
+1. User configuration                 config/
+        |
+        v
+2. Schema + semantic validation       src/validation/
+        |
+        v
+3. Pure organization model             src/model/
+        +-- OU graph
+        +-- accounts
+        +-- AccountModel
+        +-- account sets
+        +-- target resolution
+        +-- dependency graph
+        |
+        v
+4. Pulumi runtime model               src/runtime/
+        +-- AccountContext
+        +-- Pulumi Outputs
+        +-- ComponentResources
+        |
+        v
+5. AWS resources                      src/organization/, src/policies/, ...
+```
 
-Operational identifiers (`encounterId`, `sessionId`, `soapNoteId`, `visitSummaryId`) are internal ULIDs safe to log at `info` level — they are needed for request traceability. They must never be logged alongside patient-identifying context.
+### The Purity Rule
 
-Middy wrapper choice enforces transport-level PHI safety: `middyWrapper` (no input/output logging) for SQS handlers and PHI-processing Lambdas; `apiGatewayWrapperNoIo` / `apiGatewayWrapperPostNoIo` for API endpoints. No wrapper logs request/response payloads (V-002/#31) — handlers log entry/exit with operational IDs instead.
+**Target resolution, account-set evaluation, OU traversal, dependency
+analysis, and most validation must not depend on Pulumi.**
 
-### Log Levels
+Files under `src/model/` and `src/validation/` must not import from
+`@pulumi/pulumi` or `@pulumi/aws`. They operate on plain data:
 
-| Level | When to use |
-|-------|-------------|
-| `error` | Caught exceptions that the function cannot recover from |
-| `warn` | Validation failures, missing optional data, degraded paths |
-| `info` | Entry/exit points, state transitions, decisions, successful I/O |
-| `debug` | PHI fields, verbose payloads, intermediate computation |
+```typescript
+// src/model/account-model.ts — correct, no Pulumi
+export interface AccountModel {
+  key: string;
+  displayName: string;
+  email: string;
+  ouPath: string;
+  tags: Record<string, string>;
+}
+```
 
-### Minimum Logging by Layer
+```typescript
+// src/model/account-model.ts — WRONG, Pulumi has leaked into the model
+import * as pulumi from "@pulumi/pulumi";
+import { aws } from "@pulumi/aws";
 
-Every function that performs I/O must log entry and exit at minimum.
+export interface AccountModel {
+  key: string;
+  id: pulumi.Output<string>; // forbidden here
+  org: aws.organizations.Organization; // forbidden here
+}
+```
 
-| Layer | Minimum log statements | Example |
-|-------|----------------------|---------|
-| **Inbound adapters** (`api-adapter.ts`, `sqs-adapter-in.ts`) | Entry (request received with key IDs) + exit (response status or batch summary) | `log.info('Request received', { encounterId })` → `log.info('Response', { statusCode: 200 })` |
-| **Feature domain** (`features/[feature]/[feature].ts`) | Entry + exit + each major decision/branch + errors | `log.info('Orchestration started', { ... })` → `log.info('Skipping: already processed')` → `log.info('Orchestration completed')` |
-| **Entity domain** (`domains/[entity]/[operation]/*.ts`) | Entry + state transitions + exit | `log.info('Session transitioning', { from, to })` |
-| **Entity DB** (`domains/[entity]/[operation]/*-db.ts`) | Writes at `info` (confirm persistence) + conditional failures at `info` + reads at `debug` (high volume) | `log.info('Item created', { encounterId })` / `log.debug('Query returned', { count })` |
-| **Outbound adapters** (`*-adapter-out.ts`) | Call start + call result + duration/metrics | `log.info('OpenAI completed', { model, durationMs, usage })` |
+AWS IDs belong in the runtime layer, which extends the model:
 
-## Date & Time Handling
+```typescript
+// src/runtime/account-context.ts — correct
+export interface AccountContext extends AccountModel {
+  id: pulumi.Output<string>;
+}
+```
 
-Use Luxon (`DateTime` from `luxon`) for date and time handling in all code — parsing, formatting, arithmetic, durations, diffs, and time zones. Prefer Luxon's API over raw `Date` / millisecond math for date calculations. Add `luxon` to a package's dependencies when it isn't present yet.
+The payoff is testability: the entire logical organization structure must be
+buildable and testable without Pulumi. If a pure-model function needs an
+AWS account ID to make a decision, that's a design error — resolve the account
+to its logical key and pass that instead.
+
+---
+
+## Provider Version Policy
+
+The `@pulumi/aws` version is pinned through the lockfile and **governs what
+this framework supports.**
+
+```text
+Rule 1: Type unions must reflect the PINNED PROVIDER's supported values.
+Rule 2: If AWS supports a feature but the pinned provider does not,
+        configuration requesting it must FAIL EXPLICITLY.
+Rule 3: Do NOT silently introduce @pulumi/aws-native to fill provider gaps.
+Rule 4: Provider upgrades are reviewed as infrastructure changes.
+```
+
+This matters because AWS adds Organizations policy types and CloudFormation
+capabilities before `@pulumi/aws` exposes them. Behavior follows the pinned
+provider, not the AWS API.
+
+```typescript
+// Correct — explicit failure with upgrade guidance
+if (!SUPPORTED_POLICY_TYPES.includes(policy.type)) {
+  throw new Error(
+    `Policy type "${policy.type}" is not supported by @pulumi/aws ` +
+      `${PINNED_AWS_VERSION}. Supported types: ${SUPPORTED_POLICY_TYPES.join(', ')}. ` +
+      `Upgrade @pulumi/aws or choose a supported type.`
+  );
+}
+```
+
+Never hardcode AWS limits or provider unions inline. Derive them from the
+pinned provider, or centralize them in one module that a version bump updates
+in one place.
+
+---
+
+## Stable Logical Identifiers
+
+Every managed object has two identifiers, and they are not the same thing:
+
+1. A **stable TypeScript logical key** — the framework's identity for the object
+2. An **AWS-visible display name** — what operators see in the console
+
+Pulumi resource names derive from the logical key, never from the display name
+and never from a raw AWS ID.
+
+```typescript
+// config/organization.ts
+export const organization = {
+  organizationalUnits: {
+    workloads: {
+      displayName: 'Workloads',
+      children: {
+        production: { displayName: 'Production' },
+      },
+    },
+  },
+};
+```
+
+Logical OU paths are derived deterministically from config keys
+(`workloads/production`) and are what policies, account sets, assignments, and
+deployments reference.
+
+```typescript
+// Correct — logical reference
+policy.attachments: [{ target: { ou: 'workloads/production' } }]
+
+// WRONG — raw AWS ID in human-authored config
+policy.attachments: [{ target: { ouId: 'ou-abc1-xyz987' } }]
+```
+
+Raw AWS IDs in config only when a logical reference genuinely cannot resolve.
+
+---
+
+## Safety Rules
+
+These are not defaults to override casually. They exist because the failure
+mode is an entire AWS account or an organization-wide infrastructure outage.
+
+### Protection Defaults
+
+Protect at minimum (Section 94):
+
+```text
+AWS Organization
+member accounts
+StackSets Organizations access
+deployment artifact bucket
+organization-wide StackSets
+StackInstances
+critical management-account stacks
+```
+
+Critical policies may also be protected through configuration.
+
+```typescript
+// The Organization resource
+new aws.organizations.Organization('Organization', {
+  featureSet: 'ALL',
+  protect: true,
+});
+```
+
+A routine `pulumi destroy` must fail before destroying organization-critical
+resources.
+
+### Account Safety
+
+Every member account uses:
+
+```typescript
+new aws.organizations.Account(`Account-${key}`, {
+  // ...
+  closeOnDeletion: false,
+}, {
+  protect: true,
+});
+```
+
+**`closeOnDeletion: false` does NOT mean deletion is a no-op.** If Pulumi
+deletes the resource, AWS removes the account from the Organization while
+leaving the AWS account itself open. `protect: true` is therefore the primary
+guard against ordinary account removal.
+
+- Accounts must be protected by default
+- Ordinary refactoring must never automatically unprotect accounts
+- Removing an account declaration must produce a protected-resource failure,
+  not a silent removal from the Organization
+- Account decommissioning requires the explicit 9-step procedure below
+
+### Account Decommissioning
+
+Deleting an account declaration is **not** an account-closing workflow. The
+documented procedure:
+
+```text
+1. Remove or reduce Identity Center access.
+2. Remove resolved deployments as intended.
+3. Review StackSet retention behavior.
+4. Remove special policies.
+5. Preserve required data.
+6. Move account to decommission/quarantine OU if used.
+7. Review Pulumi preview.
+8. Explicitly remove account protection.
+9. Deliberately remove from Organization or perform account closure.
+```
+
+Normal `pulumi up` must never close accounts.
+
+### Preview Is Mandatory
+
+`pulumi preview` is required before applying organization changes. Review with
+extra care when the preview contains:
+
+```text
+account replacement
+account removal
+OU deletion
+OU move
+SCP changes
+service-access changes
+Identity Center access removal
+StackSet deletion
+StackInstances deletion
+management-account stack deletion
+trusted-access deletion
+```
+
+### Deployments Are Protected By Default
+
+StackSets, StackInstances, and management-account stacks are protected.
+Ordinary refactoring must not destroy organization-wide infrastructure.
+
+Two distinct lifecycles, do not conflate them:
+
+- **Account leaves a targeted OU** — deployment stays, StackInstances follow the
+  account
+- **Deployment is deleted from Pulumi** — requires a staged retain workflow
+
+The retain workflow is staged, never same-operation:
+
+```text
+1. Set retain behavior.
+2. pulumi up.
+3. Verify retention.
+4. Unprotect.
+5. Remove declaration.
+6. pulumi up.
+```
+
+Never combine a retain-behavior change with a destroy in one operation.
+
+---
+
+## Validation Quality Bar
+
+Validate the complete logical model **before** constructing dependent
+resources, wherever possible. Errors must be actionable — name the exact
+account set, OU path, account, or policy at fault.
+
+Bad:
+
+```text
+Invalid target
+```
+
+Good:
+
+```text
+Account set "productionServices"
+references OU "workloads/prod",
+but no OU exists with that logical path.
+```
+
+```typescript
+// Correct — names the offending reference
+throw new Error(
+  `Account set "${setName}" references OU "${ouPath}", ` +
+    `but no OU exists with that logical path.`
+);
+```
+
+Validation must catch problems that are cheap to fix in the pure model and
+expensive to fix after AWS has created half the resources. OU depth exceeding
+AWS's supported maximum is the canonical example: it fails in
+`src/validation/` before any `OrganizationalUnit` resource is constructed.
+
+---
+
+## Eventual Consistency
+
+Organizations and Identity Center operations exhibit propagation delay.
+Handle it explicitly, never by guessing:
+
+- Use Pulumi dependency edges first (`dependsOn`, implicit references)
+- Use provider waiters
+- Use AWS SDK waiters when the provider lacks one
+- **Avoid arbitrary sleeps**
+- Document unavoidable cases
+- Expose useful errors
+
+```typescript
+// Wrong — hides the real problem and is slow
+await new Promise((resolve) => setTimeout(resolve, 30_000));
+
+// Right — declare the dependency, let Pulumi order the graph
+new aws.organizations.OrganizationalUnit('Production', args, {
+  dependsOn: [parentOu],
+});
+```
+
+---
+
+## Drift
+
+Console changes to IaC-owned resources are drift. Operational guidance:
+
+```bash
+pulumi refresh
+pulumi preview
+```
+
+- Document provider-specific StackSet drift limitations. `pulumi refresh` is
+  useful but insufficient for auditing StackSet targets — do not claim full
+  drift coverage
+- No automatic adoption of unmanaged AWS resources
+- Imports are deliberate
+
+---
+
+## Secret Handling
+
+CloudFormation parameters marked `NoEcho: true` require special handling.
+Centralize this behavior in the framework rather than requiring every
+deployment author to know the provider-specific rule.
+
+```typescript
+// Correct — framework applies ignoreChanges automatically where required
+{
+  ignoreChanges: noEchoParameters,
+}
+```
+
+Rules:
+
+- Prefer secret references (Secrets Manager, SSM Parameter Store,
+  CloudFormation dynamic references) over passing plaintext secret values
+  through StackSet parameters
+- If Pulumi secret values must flow as parameters, preserve Pulumi secret
+  semantics and document any unavoidable CloudFormation exposure
+- Never leak secret parameter values into previews or logs
+
+---
 
 ## Code Style Guidelines
 
@@ -108,517 +490,199 @@ Use Luxon (`DateTime` from `luxon`) for date and time handling in all code — p
 
 ```typescript
 // 1. External dependencies
-import { Container, Group, Text } from '@mantine/core';
-import { Mic, Play } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { aws } from '@pulumi/aws';
+import * as pulumi from '@pulumi/pulumi';
 
 // 2. Internal imports with path aliases
-import { log } from '@utils/lambda/powertools-utils';
+import { validateOrganization } from '@/validation/organization';
+import { buildOrganizationModel } from '@/model/organization-model';
 ```
 
-**Path aliases**: Frontend `@/*` → `./src/*`, Backend `@utils/*`, `@domains/*`, `@features/*`
+**Path aliases**: `@/*` → `./src/*`
 
 ### Naming Conventions
 
 | Type | Convention | Example |
 |------|------------|---------|
-| Components | PascalCase | `ActiveConditionsCard.tsx` |
-| Utilities | kebab-case | `middy-utils.ts` |
-| Interfaces/Types | PascalCase | `CardProps`, `PatientInfo` |
-| Constants | UPPER_SNAKE_CASE | `MAX_RETRY_COUNT` |
+| Functions / variables | camelCase | `resolveAccounts` |
+| Types / interfaces | PascalCase | `AccountModel` |
+| Files | kebab-case | `account-sets.ts` |
+| Constants | UPPER_SNAKE_CASE | `MAX_OU_DEPTH` |
+| Pulumi resource names | derived from logical key | `Account-${accountKey}` |
 
-### React Component Pattern
+### Component Pattern
 
 ```typescript
-import { Box, Text } from '@mantine/core';
-
 // Interface before component
-export interface MyComponentProps {
-  title: string;
-  items: Item[];
+export interface AccountsOptions {
+  accounts: AccountDefinition[];
 }
 
 // Named export (primary)
-export function MyComponent({ title, items }: MyComponentProps) {
-  return (
-    <Box><Text>{title}</Text></Box>
-  );
-}
-
-// Default export (optional, at bottom)
-export default MyComponent;
-```
-
-### Mantine UI Styling
-
-- Use `style` prop for inline styles, `styles` prop for component customization
-- Access theme via `useMantineTheme()` hook
-- Use theme spacing: `xs`, `sm`, `md`, `lg`, `xl`
-- Avoid deprecated `sx` prop
-
-```typescript
-<Button
-  styles={{
-    root: {
-      background: '#E4FFF9',
-      '&:hover': { background: '#d4fff4' },
-    },
-  }}
->
-  Click me
-</Button>
-```
-
-### Lambda Handler Pattern
-
-**Adapters vs Domain Logic**: Adapters (e.g., `api-adapter.ts`) should only handle input validation and call domain logic functions. Business logic belongs in a separate file named after the feature.
-
-```typescript
-// feature-name.ts - Domain logic (pure business logic)
-import { Resource } from 'sst';
-
-interface DoSomethingInput {
-  id: string;
-}
-
-export async function doSomething({ id }: DoSomethingInput): Promise<Result> {
-  // Business logic here
-  return result;
-}
-```
-
-API endpoints target API Gateway V1 (REST API). New api-adapter files export
-only the V1 handler (`mainV1`). Older files may still contain V2 `main`
-exports — those are leftovers from a prior migration and are not deployed;
-do not add new V2 handlers.
-
-```typescript
-// api-adapter.ts - API endpoint adapter (V1)
-import type { APIGatewayProxyResult } from 'aws-lambda';
-import { apiGatewayWrapperNoIo } from '@utils/lambda/middy-utils';
-import { log } from '@utils/lambda/powertools-utils';
-import {
-  getAuthContextV1,
-  unauthorizedV1,
-} from '@utils/api/api-utils';
-import type { AuthorizedApiEventV1 } from '@utils/api/api-utils';
-import { doSomething } from './feature-name';
-
-const handlerV1 = async (
-  event: AuthorizedApiEventV1
-): Promise<APIGatewayProxyResult> => {
-  const context = getAuthContextV1(event);
-
-  if (!context) {
-    log.warn('Missing user context from authorizer');
-    return unauthorizedV1();
-  }
-
-  try {
-    const result = await doSomething({ id: context.userID });
-    return { statusCode: 200, body: JSON.stringify(result) };
-  } catch (error) {
-    log.error('Operation failed', { error });
-    return { statusCode: 500, body: JSON.stringify({ error: 'Internal error' }) };
-  }
-};
-
-export const mainV1 = apiGatewayWrapperNoIo(handlerV1);
-```
-
-```typescript
-// sqs-adapter-in.ts - SQS event handler
-import type { SQSEvent, Handler } from 'aws-lambda';
-import { middyWrapper } from '@utils/lambda/middy-utils';
-import { log } from '@utils/lambda/powertools-utils';
-import sqsBatch from '@middy/sqs-partial-batch-failure';
-import { doSomething } from './feature-name';
-
-const handler: Handler = async (event: SQSEvent) => {
-  const results = await Promise.allSettled(
-    event.Records.map(async (record) => {
-      const parsed = JSON.parse(record.body);
-      log.info('Processing record', { messageId: record.messageId });
-      await doSomething(parsed);
-    })
-  );
-
-  return results;
-};
-
-export const main = middyWrapper(handler).use(sqsBatch());
-```
-
-**Middy wrapper choices**:
-- `middyWrapper` — Use for SQS handlers and any handler processing PHI. No input/output logging.
-- `apiGatewayWrapperNoIo` / `apiGatewayWrapperPostNoIo` — Use for API endpoints. Never logs request/response payloads (V-002/#31); handlers must log entry/exit with operational IDs per the logging minimums above.
-
-### Call Chain Layering
-
-The domain function owns the business logic. Adapters own the translation.
-Inbound adapters receive from the outside world and pass domain input to
-the domain function. Outbound adapters translate domain output into
-external service calls. The domain decides what to do; adapters know how
-to talk to the outside world.
-
-```
-                                                           ┌→ *-adapter-out.ts
-api-adapter.ts / sqs-adapter-in.ts → feature domain (.ts) → entity domain (.ts) → entity -db.ts
-```
-
-**Rules:**
-- **Inbound adapters** (`api-adapter.ts`, `sqs-adapter-in.ts`) ONLY parse input and call the feature domain function. They never import from `@domains/`, `-db.ts`, or `*-adapter-out.ts` files.
-- **Feature domain** (`features/[feature]/[feature].ts`) contains feature-specific business logic, calls entity domain functions from `@domains/`, and calls outbound adapters (`*-adapter-out.ts`) when the feature requires external I/O.
-- **Outbound adapters** (`*-adapter-out.ts`) own the external service call (EventBridge, OpenAI, IoT, etc.). Only the feature domain function in the same feature directory may call them.
-- **Entity domain** (`domains/[entity]/[operation]/[operation].ts`) contains entity-level logic (validation, orchestration) and calls `-db.ts` files.
-- **Entity -db** (`domains/[entity]/[operation]/[operation]-db.ts`) exclusively owns DynamoDB access patterns (PK/SK/GSI mapping). No other layer knows about DynamoDB attributes.
-
-**Adapter anti-patterns** — inbound adapters must NEVER:
-- Import from `@domains/[entity]/[operation]/[operation]-db.ts` (skips domain layer)
-- Import from `@domains/[entity]/[operation]/[operation].ts` (skips feature domain layer)
-- Import from `*-adapter-out.ts` files (outbound I/O belongs in the feature domain layer)
-- Contain business logic beyond input parsing and validation
-
-**Cross-feature anti-patterns** — features must NEVER import from other features:
-- `features/feature-a/` must not import from `features/feature-b/` (creates horizontal coupling)
-- Within nested features, `features/parent/sub-a/` must not import from `features/parent/sub-b/`
-- Shared functions or types used by multiple features must be extracted to the parent feature level (e.g., `features/parent/shared-util.ts`) or to a shared module
-
-**Cross-operation anti-patterns** — a domain-logic file must NEVER reach into another operation's `-db.ts`, whether that operation lives in the same entity or a different one:
-- No `domains/[entity]/[op-a]/[op-a].ts` may import another operation's `-db.ts` — same-entity (`domains/[entity]/[op-b]/[op-b]-db.ts`) or cross-entity (`domains/[other-entity]/[op]/[op]-db.ts`); either skips that operation's domain layer. In source code, a `-db.ts` is imported only by its own operation's domain-logic file. (Test files are exempt — integration/e2e tests may import any `-db.ts` directly to seed or assert DB state, per the no-mocks testing convention.)
-- To orchestrate another operation's persistence, call that operation's **domain function**, not its `-db.ts` — e.g. `upsert-organization.ts` calls `addOrgToRegistry` (same-entity, wraps `addOrgToRegistryInDb`); `provision-user.ts` calls `upsertOrganization` (cross-entity). Neither imports a `-db.ts` directly.
-- If an operation has only a `-db.ts` and no domain-logic wrapper, add the thin wrapper (mirroring `get-organization.ts`) rather than calling the `-db.ts` from another operation. Every operation exposes its own domain-logic entry point.
-
-### SST v4 Infrastructure Patterns
-
-Always use SST v4 constructs and their built-in properties instead of raw AWS/Pulumi resources. **Exception**: For service integrations not natively supported by SST (e.g., API GW V1 → SQS direct), use raw Pulumi `aws.*` resources. See `infra/previsit-snapshot/features.ts` for the pattern.
-
-**SST resource names must be PascalCase**:
-
-```typescript
-// GOOD
-export const eventBus = new sst.aws.Bus('CopilotBus');
-
-// BAD — vitest workers strip hyphenated env vars
-export const eventBus = new sst.aws.Bus('copilot-bus');
-```
-
-Hyphens break `Resource[...]` lookup inside vitest workers — the `SST_RESOURCE_<name>` env var gets stripped during the fork.
-
-**Raw Pulumi resources must set an explicit `name` with app + stage**:
-
-```typescript
-// GOOD
-new aws.sns.Topic('MonitoringAlarmsTopic', {
-  name: `${$app.name}-${$app.stage}-monitoring-alarms`,
-});
-
-// BAD — Pulumi auto-names it `MonitoringAlarmsTopic-9ac6465`; stages collide
-new aws.sns.Topic('MonitoringAlarmsTopic');
-```
-
-Only SST components add the `<app>-<stage>-` prefix. Set the name at creation — renaming replaces the resource.
-
-**Custom API Gateway V1 resources must be registered for deployment**:
-
-SST's V1 deployment snapshot only tracks SST-managed resources. Custom `MethodResponse`/`IntegrationResponse` resources (e.g., for CORS on SQS direct integrations) must be pushed to `corsIntegrationResources` in `infra/api.ts` so the deployment waits for them. The `IntegrationResponse` must also `dependsOn` its `MethodResponse` — API Gateway rejects the mapping if the header isn't declared first.
-
-```typescript
-import { corsIntegrationResources } from '../api';
-
-const methodResponse = new aws.apigateway.MethodResponse('MyMethodResponse', {
-  restApi: apiV1.nodes.api.id,
-  resourceId: sqsIntegration.nodes.integration.resourceId,
-  httpMethod: sqsIntegration.nodes.method.apply((m) => m.httpMethod),
-  statusCode: '202',
-  responseParameters: {
-    'method.response.header.Access-Control-Allow-Origin': true,
-  },
-});
-
-const integrationResponse = new aws.apigateway.IntegrationResponse(
-  'MyIntegrationResponse',
-  {
-    restApi: apiV1.nodes.api.id,
-    resourceId: sqsIntegration.nodes.integration.resourceId,
-    httpMethod: sqsIntegration.nodes.method.apply((m) => m.httpMethod),
-    statusCode: '202',
-    responseParameters: {
-      'method.response.header.Access-Control-Allow-Origin': "'*'",
-    },
-    responseTemplates: {
-      'application/json': '{"message": "accepted"}',
-    },
-  },
-  { dependsOn: [methodResponse] }
-);
-
-corsIntegrationResources.push(methodResponse, integrationResponse);
-```
-
-**Feature infrastructure belongs in `infra/<feature-name>/features.ts`**:
-
-Never add feature routes directly to `api.ts`. The `api.ts` file should only create the API and authorizer. Feature-specific routes go in their own infrastructure file.
-
-```typescript
-// infra/api.ts - Only API creation and authorizer
-import { auth } from './auth';
-
-export const api = new sst.aws.ApiGatewayV2('Api', {
-  cors: { /* ... */ },
-});
-
-export const authorizer = api.addAuthorizer({
-  name: 'auth',
-  lambda: {
-    function: {
-      handler: 'backend/features/authorizer-lambda/handler.main',
-      link: [auth],
-    },
-  },
-});
-```
-
-```typescript
-// infra/my-feature/features.ts - Feature-specific routes (V1)
-import { apiV1, authorizerV1 } from '../api';
-import { someSecret } from '../secrets';
-
-apiV1.route(
-  'GET /my-endpoint',
-  {
-    handler: 'backend/features/my-feature/api-adapter.mainV1',
-    link: [someSecret],
-  },
-  {
-    auth: {
-      custom: authorizerV1.id,
-    },
-  }
-);
-// V1 requires deployApiV1() after all routes are registered (called in sst.config.ts)
-```
-
-Then import in `sst.config.ts`:
-```typescript
-await import('./infra/api');
-await import('./infra/my-feature/features');
-```
-
-**Use `permissions` instead of `aws.iam.RolePolicy`**:
-
-```typescript
-// GOOD: SST v4 approach
-new sst.aws.Function('MyFunction', {
-  handler: 'backend/features/my-feature/handler.main',
-  permissions: [
-    {
-      actions: ['kms:Decrypt', 'kms:Encrypt', 'kms:GenerateDataKey'],
-      resources: [kmsKey.arn],
-    },
-  ],
-});
-
-// BAD: Verbose raw AWS approach (avoid)
-const fn = new sst.aws.Function('MyFunction', { ... });
-new aws.iam.RolePolicy('MyFunctionKmsPolicy', {
-  role: fn.nodes.function.nodes.role.name,
-  policy: kmsKey.arn.apply((arn) => JSON.stringify({ ... })),
-});
-```
-
-**Use `transform` for underlying resource customization**:
-
-```typescript
-new sst.aws.Queue('MyQueue', {
-  transform: {
-    queue: (args) => {
-      args.receiveWaitTimeSeconds = 20;
-    },
-  },
-});
-
-new sst.aws.Dynamo('MyTable', {
-  transform: {
-    table: (args) => {
-      args.serverSideEncryption = { enabled: true, kmsKeyArn: key.arn };
-    },
-  },
-});
-```
-
-**Use `link` for automatic resource access**:
-
-```typescript
-new sst.aws.Function('MyFunction', {
-  handler: 'backend/handler.main',
-  link: [bucket, table, secret], // Grants read/write permissions automatically
-});
-```
-
-**Externalize configuration with `sst.Linkable`**:
-
-Never hardcode configuration values (URLs, feature flags, etc.) in backend code. Use `sst.Linkable` to define configuration in infrastructure and access it via `Resource` in backend code.
-
-```typescript
-// infra/my-feature/features.ts - Define configuration
-const apiBaseUrl = new sst.Linkable('ApiBaseUrl', {
-  properties: {
-    value: 'https://api.example.com/v1',
-  },
-});
-
-apiV1.route(
-  'GET /my-endpoint',
-  {
-    handler: 'backend/features/my-feature/api-adapter.mainV1',
-    link: [apiBaseUrl], // Link the configuration to the Lambda
-  },
-  { auth: { custom: authorizerV1.id } }
-);
-```
-
-```typescript
-// backend/features/my-feature/my-feature.ts - Access configuration
-import { Resource } from 'sst';
-
-export function callExternalApi() {
-  const url = new URL(Resource.ApiBaseUrl.value); // Access via Resource
+export function Accounts({ accounts }: AccountsOptions) {
   // ...
 }
 ```
 
-For stage-varying configuration (different values per environment), use `env.config.ts`:
+### Pulumi Resource Pattern
 
 ```typescript
-// infra/env.config.ts - Add new config to EnvironmentConfig interface and environments object
-interface EnvironmentConfig {
-  externalApiUrl: string; // Add new config property
+// GOOD — logical key drives the Pulumi name, safety options are explicit
+export function Account(
+  { key, displayName, email, roleName }: AccountOptions,
+  { org }: RuntimeContext
+) {
+  return new aws.organizations.Account(`Account-${key}`, {
+    email,
+    name: displayName,
+    roleName,
+    parentId: org.ouId,
+  }, {
+    protect: true,
+  });
+}
+```
+
+### Validation Pattern
+
+Validators are pure functions returning structured errors. They never throw
+bare strings and never import Pulumi.
+
+```typescript
+export interface ValidationError {
+  code: string;
+  message: string;
+  reference?: string;
 }
 
-export const environments: Environment = {
-  [Stage.local]: {
-    externalApiUrl: 'https://sandbox.api.example.com',
-  },
-  [Stage.dev]: {
-    externalApiUrl: 'https://sandbox.api.example.com',
-  },
-  [Stage.staging]: {
-    externalApiUrl: 'https://staging.api.example.com',
-  },
-  [Stage.prod]: {
-    externalApiUrl: 'https://api.example.com',
-  },
-};
-
-// infra/my-feature/features.ts - Use envConfig() to access stage-specific values
-import { envConfig } from '../env.config';
-
-const externalApiUrl = new sst.Linkable('ExternalApiUrl', {
-  properties: { value: envConfig().externalApiUrl },
-});
+export function validateAccountSets(
+  model: OrganizationModel
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+  // ...
+  return errors;
+}
 ```
 
-**Use SST component methods**:
-
-```typescript
-// Queue subscriptions
-queue.subscribe(
-  { handler: '...', link: [bucket] },
-  { batch: { partialResponses: true } }
-);
-
-// EventBridge subscriptions
-defaultBus.subscribeQueue('Subscription', queue, {
-  pattern: { source: ['aws.s3'], detailType: ['Object Created'] },
-});
-```
+---
 
 ## Directory Structure
 
-### File Organization
-
-**Backend**:
-
 ```
-backend/
-├── domains/[entity]/           # Core business domains
-│   ├── [entity].ts             # Domain types + Zod schemas (source of truth)
-│   ├── create-[entity]/        # Create operations
-│   │   ├── create-[entity].ts  # Domain logic
-│   │   └── create-[entity]-db.ts
-│   └── get-[entity]/           # Read operations
-│       ├── get-[entity].ts     # Domain logic
-│       └── get-[entity]-db.ts
-├── features/[feature-name]/    # API endpoints & event handlers
-│   ├── [feature-name].ts       # Domain logic (business logic)
-│   ├── api-adapter.ts          # API Gateway handler (input validation only)
-│   ├── sqs-adapter-in.ts       # SQS event handler
-│   ├── lambda-adapter-in.ts    # Generic Lambda handler
-│   ├── *-adapter-out.ts        # Outbound adapters (OpenAI, EventBridge, IoT)
-│   ├── [feature].unit.test.ts  # Unit tests
-│   └── ~e2e.test.ts            # E2E tests
-└── utils/                      # Shared utilities
-    ├── lambda/                 # Lambda-specific utils
-    ├── middy/                  # Middy middleware
-    ├── s3/                     # S3 utilities
-    └── test/                   # Test utilities
+.
+├── package.json
+├── pnpm-lock.yaml
+├── tsconfig.json
+├── Pulumi.yaml
+├── README.md
+│
+├── config/                     # User configuration
+│   ├── organization.ts
+│   ├── account-sets.ts
+│   ├── policies.ts
+│   ├── identity-center.ts
+│   ├── deployments.ts
+│   └── integrations.ts
+│
+├── src/
+│   ├── index.ts
+│   │
+│   ├── types/                  # Type definitions and schemas
+│   │   ├── organization.ts
+│   │   ├── accounts.ts
+│   │   ├── targets.ts
+│   │   ├── policies.ts
+│   │   ├── identity-center.ts
+│   │   └── deployments.ts
+│   │
+│   ├── model/                  # Pure — NO PULUMI IMPORTS
+│   │   ├── organization-model.ts
+│   │   ├── account-model.ts
+│   │   ├── ou-paths.ts
+│   │   ├── account-sets.ts
+│   │   ├── target-resolver.ts
+│   │   └── dependency-graph.ts
+│   │
+│   ├── runtime/                # Pulumi runtime model
+│   │   └── account-context.ts
+│   │
+│   ├── validation/             # Pure — NO PULUMI IMPORTS
+│   │   ├── organization.ts
+│   │   ├── account-sets.ts
+│   │   ├── policies.ts
+│   │   ├── identity-center.ts
+│   │   ├── deployments.ts
+│   │   └── quotas.ts
+│   │
+│   ├── naming/
+│   │   └── resource-names.ts
+│   │
+│   ├── organization/           # AWS Organizations resources
+│   │   ├── organization.ts
+│   │   ├── organizational-units.ts
+│   │   └── accounts.ts
+│   │
+│   ├── policies/
+│   │   ├── policies.ts
+│   │   ├── attachments.ts
+│   │   └── service-access-requirements.ts
+│   │
+│   ├── identity-center/
+│   │   ├── discovery.ts
+│   │   ├── groups.ts
+│   │   ├── users.ts
+│   │   ├── memberships.ts
+│   │   ├── permission-sets.ts
+│   │   └── assignments.ts
+│   │
+│   ├── integrations/
+│   │   ├── service-access.ts
+│   │   ├── delegated-administrators.ts
+│   │   └── stacksets-organizations-access.ts
+│   │
+│   └── deployments/
+│       ├── deployment.ts
+│       ├── automatic-deployment.ts
+│       ├── resolved-deployment.ts
+│       ├── management-account.ts
+│       ├── dependencies.ts
+│       ├── template-parser.ts
+│       ├── parameters.ts
+│       ├── artifacts.ts
+│       └── decommission.ts
+│
+├── policies/
+│   └── *.json
+│
+└── deployments/
+    └── */
+        └── template.yaml
 ```
 
-Each operation type (create, get, update, delete) gets its own subfolder. Do not mix operations — e.g., a `getSnapshot` function does not belong in `create-snapshot/`.
+### File Placement Rules
 
-**Domain separation of concerns**: Domain functions (`[operation].ts`) do NOT know about DynamoDB attributes (PK/SK/GSI). Only `-db.ts` files know how to map domain entities to DynamoDB items.
+| Code | Location | Constraint |
+|------|----------|-------------|
+| Target resolution, account-set evaluation, OU traversal, dependency analysis | `src/model/` | **No Pulumi imports** |
+| Schema + semantic validation | `src/validation/` | **No Pulumi imports** |
+| `AccountContext`, Outputs, ComponentResources | `src/runtime/` | Pulumi allowed |
+| AWS resource construction | `src/{organization,policies,identity-center,integrations,deployments}/` | Pulumi required |
+| Pure model type definitions | `src/types/` | **No Pulumi imports** |
 
-**Domain entity ownership**: Every domain defines its canonical entity types in
-`backend/domains/<entity>/<entity>.ts`. These types are the source of truth for
-that domain.
+### Test Placement
 
-**DB return contracts**: Every `*-db.ts` function must return a known
-domain-owned entity or domain-owned DTO. Do not return
-`Record<string, unknown>`, feature schema types, or ad hoc temporary row
-interfaces as the public function contract.
+Tests are colocated with the code they test, matching the source path:
 
-**DB function naming**: Public `*-db.ts` functions should use explicit DB-layer
-names like `getXFromDb`, `listXFromDb`, `createXInDb`, or `updateXInDb`.
-Avoid storage-shape names like `Rows` in public DB function names.
-
-**Feature/domain separation**: Domain and DB layers must not import from
-`backend/features/**` for types or schemas. Feature schemas define transport
-contracts only; they do not own domain entities.
-
-**Nested features** (for related functionality):
-
-```
-backend/features/
-└── parent-feature/             # Parent grouping folder
-    ├── sub-feature-a/          # Sub-feature A
-    │   ├── sub-feature-a.ts    # Domain logic
-    │   └── api-adapter.ts      # Adapter
-    └── sub-feature-b/          # Sub-feature B
-        ├── sub-feature-b.ts    # Domain logic
-        └── api-adapter.ts      # Adapter
+```text
+src/model/account-sets.unit.test.ts        # pure
+src/model/account-sets.mock.test.ts        # Pulumi mocks, if needed
+src/organization/accounts.mock.test.ts     # resource + options assertions
 ```
 
-**Infrastructure**:
+A global `test/` directory is not used. Section 99's required behavioral tests
+are pure logic and live next to their implementation.
 
-```
-infra/
-├── api.ts                      # API Gateway + authorizer ONLY
-├── auth.ts                     # Auth configuration
-├── secrets.ts                  # Secret definitions
-├── dynamodb.ts                 # DynamoDB tables
-├── s3.ts                       # S3 buckets
-├── bus.ts                      # EventBridge buses
-└── [feature-name]/             # Feature-specific infrastructure
-    └── features.ts             # Routes, queues, etc. for this feature
-```
-
-**Frontend**:
-
-```
-frontend/src/components/  # Reusable components
-frontend/src/routes/      # TanStack Router file-based routes
-```
+---
 
 ## Environment
 
@@ -628,15 +692,54 @@ frontend/src/routes/      # TanStack Router file-based routes
   ```bash
   eval "$(fnm env --use-on-cd --shell bash)"
   ```
+- AWS credentials come from IAM Identity Center, not long-lived access keys:
+  ```bash
+  aws sso login --profile org-admin
+  AWS_PROFILE=org-admin pulumi preview
+  ```
+
+---
+
+## CI/CD
+
+Pull requests run:
+
+```text
+dependency install
+typecheck
+unit tests
+Pulumi mock tests
+configuration validation
+Pulumi preview
+```
+
+Deployment requires an approved protected workflow. Organization modifications
+must not auto-deploy from arbitrary branches.
+
+Do not automatically create and destroy AWS Organizations during ordinary CI.
+
+---
 
 ## Common Patterns
 
-**New API Endpoint**:
-1. Create domain logic in `backend/features/[feature]/[feature].ts`
-2. Create adapter in `backend/features/[feature]/api-adapter.ts` — export only `mainV1` (V1-only; do not add a V2 `main` handler)
-3. Create infrastructure in `infra/[feature]/features.ts` — V1 route using `apiV1.route()` with `authorizerV1`
-4. Import infrastructure in `sst.config.ts` (before `deployApiV1()` call)
+**New Organizational Unit**:
+1. Add the OU to `config/organization.ts` with a stable logical key
+2. Depth and duplicate-path validation runs automatically in `src/validation/`
+3. Logical path derives from the key path — use it in policies, sets, deployments
 
-**New Frontend Route**: Create in `frontend/src/routes/` (TanStack Router conventions) → Use Mantine for UI
+**New Account Selector or Account Set**:
+1. Extend the `AccountSelector` union in `src/types/targets.ts`
+2. Implement evaluation in `src/model/account-sets.ts` (pure)
+3. Add validation in `src/validation/account-sets.ts` (pure)
+4. Add unit tests covering inclusion, exclusion, dedupe, and management-account rules
 
-**New Component**: Create in `frontend/src/components/` with props interface → Named export + optional default export
+**New AWS Resource**:
+1. Add it under the capability directory (`src/policies/`, etc.)
+2. Derive the Pulumi resource name from the logical key via `src/naming/`
+3. Apply protection defaults and `dependsOn` where ordering matters
+4. Add a `*.mock.test.ts` asserting the resource type, inputs, and options
+
+**New Validation Rule**:
+1. Add it to the relevant validator in `src/validation/`
+2. Return a `ValidationError` with a `reference` naming the exact offender
+3. Add a unit test asserting both the failure and the error message

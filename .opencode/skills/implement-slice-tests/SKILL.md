@@ -67,8 +67,8 @@ Required evidence:
 - In-scope implementation entrypoints, behavior branches, schemas, constants,
   persistence mappings, external boundaries, infrastructure, helpers, and tests
   for every relevant tier.
-- `backend/utils/aws-test/` utilities when integration or e2e assertions observe
-  AWS resources.
+- For Pulumi mock tests, the resource-constructing code and the options it
+  passes.
 
 ## Output Format
 
@@ -169,43 +169,42 @@ same-subject authoritative sources still conflict, apply Critical Rule 2.
    edge case, idempotency risk, persisted effect, security requirement, and
    wiring risk to its authoritative tier and one planned or existing scenario.
    Derive applicable required, optional, malformed, unknown, and boundary-value
-   schema cases from the actual contract. Derive applicable authorization,
-   ownership-isolation, PHI-safety, and external-call security cases from current
+   schema cases from the actual contract. Derive applicable ownership-isolation,
+   safety-option, secret-handling, and external-call security cases from current
    authority and touched behavior. Satisfy every authoritative entry and tier
    before applying minimality; then avoid duplicate scenarios already covered at
    the correct tier.
-3. Select every required tier under `Source Material`. In particular, do not
-   substitute mocked unit coverage for required real-I/O integration coverage,
-   invoke the real Lambda handler in backend feature integration tests when
-   required, and cover deployed infrastructure wiring with e2e tests when the
-   authoritative risk model requires it. Do not add redundant low-value unit
-   tests for a Lambda adapter that only validates input, delegates once, and
-   returns a result when integration and e2e are the authoritative fit.
+3. Select every required tier under `Source Material`. This repo has two tiers:
+   pure unit tests (`*.unit.test.ts`) and Pulumi mock tests (`*.mock.test.ts`).
+   A unit test imports no Pulumi module; a mock test asserts which AWS resources
+   are constructed and with which options. Do not write a unit test that needs
+   mocks for pure-model or validation logic — that logic belongs in
+   `src/model/` or `src/validation/`. Do not write a mock test that asserts
+   pure-model behavior. There is no live-AWS tier; never add one.
 4. **Implement tests.** Implement the smallest complete set using current
    governing rules and local style where unconstrained:
    - use Vitest, required naming and placement, repository import style, and
      required scenario structure;
-   - apply permitted mock boundaries and setup order, including `vi.hoisted()`
-     before `vi.mock()` and imports when required;
-   - derive keys, indexes, resource names, object paths, shapes, cleanup keys,
-     error types/messages, metadata, and throw/no-op/update behavior from code;
-   - use unique synthetic non-PHI data, collision-safe IDs, required auth
-     rejection scenarios, and network timeouts;
-   - target cleanup to every persisted resource created by the test, including
-     resources created before a setup or scenario partially fails.
-   If correct testing requires many mocks or an unsupported seam, stop forcing
-   the test. Never refactor the seam unless it meets Critical Rule 3; otherwise
-   emit a Production Finding or Blocker as appropriate.
-5. **AWS side effects.** For each integration or e2e scenario with an observable
-   AWS-backed side effect after a write, put, publish, or handler invocation:
-   - identify the first assertion and actual read path;
-   - use the service-specific `expectAws` setup, matcher, and cleanup required by
-     current authority;
-   - extend `backend/utils/aws-test/` under its documented pattern when no helper
-     covers the service;
-   - perform richer direct re-reads only after the authoritative matcher settles;
-   - never use eventual-consistency matchers in `beforeAll` or `afterAll` as
-     setup or cleanup synchronization barriers.
+   - for mock tests, call `setMocks` before importing the module under test and
+     resolve `Output` values through the `promiseOf` helper;
+   - derive keys, logical paths, Pulumi resource names, inputs, options, shapes,
+     error types/messages, metadata, and throw/no-op behavior from code;
+   - use collision-safe unique logical keys in fixtures;
+   - assert safety options (`protect`, `closeOnDeletion`, `dependsOn`) wherever
+     the implementation sets them;
+   - keep one runtime configuration per mock test file — do not mix
+     "resources were created" with "validation prevented creation" assertions in
+     the same file.
+   If correct testing requires mocks of the code under test, stop forcing the
+   test. Never refactor the seam unless it meets Critical Rule 3; otherwise emit a
+   Production Finding or Blocker as appropriate.
+5. **Pulumi resource assertions.** For each mock-test scenario asserting on a
+   constructed resource:
+   - verify the Pulumi name derives from the logical key, not the display name;
+   - verify asserted inputs and options were read from the implementation;
+   - assert resource options (such as `protect` and `dependsOn`) through the
+     implementation's exported policy helper, not by expecting them among
+     recorder inputs — options are not inputs.
 6. **Production defects.** If tests expose a production defect, classify it
    before editing:
    - apply only an eligible tiny fix under Critical Rule 3;
@@ -242,9 +241,12 @@ Initialize fnm before any `pnpm` command:
 
 `eval "$(fnm env --use-on-cd --shell bash)"`
 
-- Backend single-file test from `backend`:
-  `LOG_LEVEL=SILENT sst shell -- vitest run <path>`
-- Frontend single-file test from `frontend`: `pnpm vitest run <path>`
+- Pure unit test: `pnpm vitest run src/path/to/file.unit.test.ts`
+- Pulumi mock test: `pnpm vitest run src/path/to/file.mock.test.ts`
+- Tier suites: `pnpm test:unit` (pure) and `pnpm test:mock` (Pulumi `setMocks`)
+
+Neither tier requires AWS credentials. There is no live-test tier in this repo;
+never add one.
 
 If required validation cannot run, preserve completed safe changes and report the
 exact command, failure or blocker, and next action. Environment constraints do
@@ -267,8 +269,8 @@ Before responding, confirm:
    defects obey Critical Rule 3; the final diff preserves unrelated changes and
    contains no in-scope focused or skipped tests, stale snapshots, debug output,
    generated artifacts, or accidental dependency edits.
-5. Fnm initialization and the correct backend or frontend working directory were
-   used. Every applicable command is reported with pass/fail, exit status, and a
+5. Fnm initialization was used before any pnpm command. Every applicable
+   command is reported with pass/fail, exit status, and a
    concise result, or with its exact blocker and next command; no unrun check is
    claimed successful.
 6. Exactly one allowed footer is the final nonblank line and matches the ordered

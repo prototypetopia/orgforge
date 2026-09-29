@@ -12,7 +12,7 @@ start work from the correct directory and session state.
 - **slug** — the required `<workstream-slug>` argument; valid form
   `^[a-z0-9]+(-[a-z0-9]+)*$`.
 - **branch name** — `session/<slug>`.
-- **worktree path** — sibling directory `../provider-copilot-<slug>`.
+- **worktree path** — sibling directory `../orgforge-<slug>`.
 - **selected base** — the base branch used throughout: `origin/main` when it
   exists, otherwise local `main`.
 
@@ -280,14 +280,14 @@ git merge-base --is-ancestor <selected-base> <session-or-remote-branch>
 git diff --quiet <selected-base> session/<slug>
 git diff --quiet <selected-base> origin/session/<slug>
 # Path existence / inspection (also used as post-creation read-back):
-test -e ../provider-copilot-<slug>
-git -C ../provider-copilot-<slug> rev-parse --is-inside-work-tree
-git -C ../provider-copilot-<slug> status --short --branch
+test -e ../orgforge-<slug>
+git -C ../orgforge-<slug> rev-parse --is-inside-work-tree
+git -C ../orgforge-<slug> status --short --branch
 # Worktree creation (one of these, only after all checks pass):
-git worktree add ../provider-copilot-<slug> session/<slug>
+git worktree add ../orgforge-<slug> session/<slug>
 # --no-track: first push creates origin/session/<slug> (see Worktree Creation):
-git worktree add -b session/<slug> --no-track ../provider-copilot-<slug> <selected-base>
-git worktree add --track -b session/<slug> ../provider-copilot-<slug> origin/session/<slug>
+git worktree add -b session/<slug> --no-track ../orgforge-<slug> <selected-base>
+git worktree add --track -b session/<slug> ../orgforge-<slug> origin/session/<slug>
 ```
 
 Only substitute `<slug>` with the validated slug and `<selected-base>` with
@@ -327,16 +327,16 @@ Only substitute `<slug>` with the validated slug and `<selected-base>` with
 **Worktree Path Rules** — evaluate after branch selection and before any
 `git worktree add`:
 
-1. Default to `../provider-copilot-<slug>`.
+1. Default to `../orgforge-<slug>`.
 2. The path must resolve outside the repository root (the default
-   `../provider-copilot-<slug>` sibling and the `-2` alternate qualify). Reject
+   `../orgforge-<slug>` sibling and the `-2` alternate qualify). Reject
    any path nested inside the current work tree — creating a worktree inside the
    repo is not allowed; ask for a path outside the repo.
 3. If the path does not exist, it is available.
 4. If the path exists and is already a git worktree for `session/<slug>`, select
    it and do not create another worktree.
 5. If the path exists but is not the expected worktree, stop and ask for a new
-   path. Recommend `../provider-copilot-<slug>-2`.
+   path. Recommend `../orgforge-<slug>-2`.
 6. Never remove or overwrite an existing directory (Critical Rule 3).
 
 **Worktree Creation** — only after all checks pass and no confirmation gate is
@@ -345,13 +345,13 @@ unaffected by the current working tree's state (dirty or detached HEAD), so no
 working-tree cleanup is needed or permitted (Critical Rule 3).
 
 - Existing safe local branch:
-  `git worktree add ../provider-copilot-<slug> session/<slug>`
+  `git worktree add ../orgforge-<slug> session/<slug>`
 - New branch from the selected base (`--no-track` so it does not inherit the
   base's `origin/main` upstream; the first push then creates
   `origin/session/<slug>` and sets it as upstream):
-  `git worktree add -b session/<slug> --no-track ../provider-copilot-<slug> <selected-base>`
+  `git worktree add -b session/<slug> --no-track ../orgforge-<slug> <selected-base>`
 - Confirmed remote branch tracking:
-  `git worktree add --track -b session/<slug> ../provider-copilot-<slug> origin/session/<slug>`
+  `git worktree add --track -b session/<slug> ../orgforge-<slug> origin/session/<slug>`
 
 After creation (or when selecting an existing worktree), **read back the
 result**: run `git -C <worktree-path> status --short --branch` and confirm the

@@ -62,7 +62,7 @@ This skill is read-only. It must output a single apply_patch-ready patch labeled
 3. Find the next available `<NN>` from `sessions/<slug>/<slug>-[0-9][0-9]-*.md`.
 4. Resolve the new plan path: `sessions/<slug>/<slug>-<NN>-<slice-title>.md`.
 5. Ask only targeted questions needed to bound the Stage 1 stub or surface `Needs User Approval` decisions. Do not ask for low-risk `Agent-Owned` details. Examples:
-   - What is the scope (backend/frontend/infra/docs)?
+   - What is the scope (config/src/policies/deployments/docs/infra)?
    - Any dependencies (which slice must be done first)?
    - What is the initial acceptance shape (2-5 high-level checks)?
    - What open question or risk should be preserved in the stub?

@@ -35,9 +35,10 @@ Follow these rules in order:
 Audit one slice implementation against its plan and applicable source material.
 Check correctness, regressions, requirements, acceptance criteria, contracts,
 schemas, architecture, mapping, layering, ownership, file placement, decision
-authority, complexity, and non-test verification. For relevant serverless code,
-also check operations, logging, and PHI safety; PHI logged above `debug` is a
-Warning.
+authority, complexity, and non-test verification. For relevant Pulumi code,
+also check destructive-change safety, layer purity, provider-version policy, and
+secret handling; a secret value reaching a preview or log as a plain input is a
+Warning at minimum.
 
 ## Inputs
 
@@ -171,19 +172,30 @@ apply Critical Rule 4.
 6. Trace changed exports, contracts, and behavior through direct callers and
    infrastructure to identify regressions against governing requirements and
    unchanged expected behavior.
-7. For in-scope serverless resources, apply only checks relevant to the service
-   and invocation mode, honoring documented exceptions:
-    - **Security:** Hardcoded secrets are Critical. Broad IAM permissions are a
-      Warning when narrower service-supported scope exists without justification.
-    - **Reliability:** Check service-appropriate failure handling and idempotency
-      for duplicate-capable delivery. When an asynchronous invocation requires
-      terminal failure handling, absence of a DLQ, `onFailure` destination, or
-      documented service-appropriate equivalent is a Warning. Flag synchronous
-      long-running work or chained Lambda orchestration when durable async
-      execution, state, retries, or failure handling are required. Treat
-      unnecessary intermediary Lambdas and unsuitable default timeouts as Info.
-    - **Observability:** Apply the layer-specific logging and PHI rules in
-      `AGENTS.md`.
+7. For in-scope AWS resources, apply only checks relevant to the service and
+   the Pulumi lifecycle, honoring documented exceptions:
+    - **Safety:** Missing `protect: true` on an org-critical resource (Organization,
+      member accounts, StackSets Organizations access, artifact bucket,
+      organization-wide StackSets, StackInstances, critical management-account
+      stacks) is Critical. A member account missing `closeOnDeletion: false` is
+      Critical. Treat any change that unprotects a resource as Critical.
+    - **Destructive-change safety:** Flag any change that would let an ordinary
+      `pulumi up` remove accounts, policies, or organization-wide infrastructure.
+      Flag combining a retain-behavior change with a resource destroy in one
+      operation.
+    - **Ordering:** Flag arbitrary `setTimeout` sleeps or hand-rolled waits where
+      a Pulumi dependency edge, provider waiter, or SDK waiter applies.
+    - **Secrets:** Hardcoded secrets are Critical. Secret values reaching previews
+      or logs as plain inputs are Critical. Missing `ignoreChanges` handling for
+      `NoEcho` parameters, where the provider requires it, is a Warning.
+    - **Purity:** Flag any import of `@pulumi/pulumi` or `@pulumi/aws` in
+      `src/model/` or `src/validation/` — see the purity rule in `AGENTS.md`.
+    - **Provider policy:** Flag inline hardcoded AWS limits or provider unions
+      that should derive from the pinned `@pulumi/aws` version, and any silent
+      `@pulumi/aws-native` fallback.
+    - **Consistency:** Confirm drift handling matches `AGENTS.md` (refresh plus
+      preview, no automatic adoption, deliberate imports), and that StackSet
+      drift limitations are not overstated as full coverage.
 8. Inspect recorded plan-required verification when available, but do not run or
    claim to have run executable checks. If a required conclusion depends on
    unavailable runtime evidence, apply Critical Rule 2.
@@ -205,8 +217,8 @@ Before responding, confirm:
    consistent disposition, and the earliest owner; severity was not substituted
    for disposition.
 5. Consequential unresolved assumptions are blockers, not guesses.
-6. Ordinary test findings were excluded, and applicable security, logging, and
-   PHI checks covered all changed I/O and log sites.
+6. Ordinary test findings were excluded, and applicable safety, purity, provider
+   policy, ordering, and secret-handling checks covered all changed resources.
 7. The validation disclosure states that executable checks were not run and does
    not claim recorded verification was executed by this audit.
 8. Exactly one allowed machine footer is the final nonblank line, with no text

@@ -90,7 +90,7 @@
 
 ## Security and Privacy
 
-- <PHI-safe logging rules, access control, encryption assumptions>
+- <secret-handling rules, access control, encryption assumptions>
 
 ---
 

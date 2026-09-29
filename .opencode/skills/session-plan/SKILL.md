@@ -50,7 +50,7 @@ Produce a concise but implementation-ready plan for the next session. Address al
 
 2. **Task breakdown**
    - For each selected task:
-     - scope (backend/frontend/infra/docs)
+     - scope (config/src/policies/deployments/docs/infra)
      - exact files likely to change
      - acceptance criteria
      - validation approach

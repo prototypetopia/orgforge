@@ -175,10 +175,12 @@ validation boundaries, optionality/defaults, serialization, and evidenced migrat
 or compatibility needs. Trace changed exports, routes, resources, and configuration
 through callers and operational wiring.
 
-For files performing I/O, enforce applicable `AGENTS.md` logging minimums. Treat
-prohibited PHI or patient-identifying data above debug by actual privacy impact, not
-a fixed warning. Check evidence-applicable trust/data-safety,
-failure/reliability, and ownership/contracts/wiring boundaries.
+For files handling secrets, enforce applicable `AGENTS.md` secret-handling rules:
+treat secret or credential exposure — plaintext secret parameters, secret
+values reaching previews or logs, or missing Pulumi secret semantics — as
+Critical by actual exposure impact, not a fixed warning. Check
+evidence-applicable trust/data-safety, failure/reliability, and
+ownership/contracts/wiring boundaries.
 
 For each changed branch or I/O boundary, statically walk applicable success,
 empty/missing/invalid input, retry/duplicate, partial-failure, and error paths. Trace
