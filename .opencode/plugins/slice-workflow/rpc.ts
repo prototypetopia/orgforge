@@ -1,5 +1,10 @@
 import { Rpc } from '@opencode/plugin/rpc';
 
+// The TUI re-announces on this interval; the host forgets a handshake older
+// than the stale window, which must stay comfortably above it.
+export const TUI_HEARTBEAT_MS = 30_000;
+export const TUI_STALE_MS = 90_000;
+
 const pickOption = {
   type: 'object',
   properties: {

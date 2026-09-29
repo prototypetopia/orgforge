@@ -3,7 +3,11 @@
   "agents": {
     "build": {
       "permissions": [
-        { "action": "subagent", "resource": "*", "effect": "deny" },
+        {
+          "action": "subagent",
+          "resource": "*",
+          "effect": "deny"
+        },
         {
           "action": "subagent",
           "resource": "slice-*",
@@ -15,22 +19,62 @@
       "description": "Runs the read-only generic plan-refinement stage of a slice workflow.",
       "mode": "subagent",
       "permissions": [
-        { "action": "*", "resource": "*", "effect": "deny" },
-        { "action": "read", "resource": "*", "effect": "allow" },
-        { "action": "glob", "resource": "*", "effect": "allow" },
-        { "action": "grep", "resource": "*", "effect": "allow" },
-        { "action": "skill", "resource": "refine-plan", "effect": "allow" }
+        {
+          "action": "*",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "read",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "glob",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "grep",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "skill",
+          "resource": "refine-plan",
+          "effect": "allow"
+        }
       ]
     },
     "slice-design-edit": {
       "description": "Runs editable requirements, schema, and architecture refinement stages of a slice workflow.",
       "mode": "subagent",
       "permissions": [
-        { "action": "*", "resource": "*", "effect": "deny" },
-        { "action": "read", "resource": "*", "effect": "allow" },
-        { "action": "glob", "resource": "*", "effect": "allow" },
-        { "action": "grep", "resource": "*", "effect": "allow" },
-        { "action": "edit", "resource": "*", "effect": "allow" },
+        {
+          "action": "*",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "read",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "glob",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "grep",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "edit",
+          "resource": "*",
+          "effect": "allow"
+        },
         {
           "action": "skill",
           "resource": "refine-plan-requirements",
@@ -52,83 +96,202 @@
       "description": "Runs the implementation stage of a slice workflow.",
       "mode": "subagent",
       "permissions": [
-        { "action": "*", "resource": "*", "effect": "deny" },
-        { "action": "read", "resource": "*", "effect": "allow" },
-        { "action": "glob", "resource": "*", "effect": "allow" },
-        { "action": "grep", "resource": "*", "effect": "allow" },
-        { "action": "edit", "resource": "*", "effect": "allow" },
-        { "action": "shell", "resource": "*", "effect": "allow" },
-        { "action": "shell", "resource": "git *", "effect": "deny" },
+        {
+          "action": "*",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "read",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "glob",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "grep",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "edit",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "git *",
+          "effect": "deny"
+        },
         {
           "action": "shell",
           "resource": "git status *",
           "effect": "allow"
         },
-        { "action": "shell", "resource": "git diff *", "effect": "allow" },
-        { "action": "skill", "resource": "implement-slice", "effect": "allow" }
-      ]
+        {
+          "action": "shell",
+          "resource": "git diff *",
+          "effect": "allow"
+        },
+        {
+          "action": "skill",
+          "resource": "implement-slice",
+          "effect": "allow"
+        }
+      ],
+      "model": "opencode/muse-spark-1.3-contributor-free"
     },
     "slice-implement-tests": {
       "description": "Runs the test implementation stage of a slice workflow.",
       "mode": "subagent",
       "permissions": [
-        { "action": "*", "resource": "*", "effect": "deny" },
-        { "action": "read", "resource": "*", "effect": "allow" },
-        { "action": "glob", "resource": "*", "effect": "allow" },
-        { "action": "grep", "resource": "*", "effect": "allow" },
-        { "action": "edit", "resource": "*", "effect": "allow" },
-        { "action": "shell", "resource": "*", "effect": "allow" },
-        { "action": "shell", "resource": "git *", "effect": "deny" },
+        {
+          "action": "*",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "read",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "glob",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "grep",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "edit",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "git *",
+          "effect": "deny"
+        },
         {
           "action": "shell",
           "resource": "git status *",
           "effect": "allow"
         },
-        { "action": "shell", "resource": "git diff *", "effect": "allow" },
+        {
+          "action": "shell",
+          "resource": "git diff *",
+          "effect": "allow"
+        },
         {
           "action": "skill",
           "resource": "implement-slice-tests",
           "effect": "allow"
         }
-      ]
+      ],
+      "model": "opencode/muse-spark-1.3-contributor-free"
     },
     "slice-implement-docs": {
       "description": "Runs the documentation update stage of a slice workflow.",
       "mode": "subagent",
       "permissions": [
-        { "action": "*", "resource": "*", "effect": "deny" },
-        { "action": "read", "resource": "*", "effect": "allow" },
-        { "action": "glob", "resource": "*", "effect": "allow" },
-        { "action": "grep", "resource": "*", "effect": "allow" },
-        { "action": "edit", "resource": "*", "effect": "allow" },
+        {
+          "action": "*",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "read",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "glob",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "grep",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "edit",
+          "resource": "*",
+          "effect": "allow"
+        },
         {
           "action": "shell",
           "resource": "git status *",
           "effect": "allow"
         },
-        { "action": "shell", "resource": "git diff *", "effect": "allow" },
+        {
+          "action": "shell",
+          "resource": "git diff *",
+          "effect": "allow"
+        },
         {
           "action": "skill",
           "resource": "update-slice-docs",
           "effect": "allow"
         }
-      ]
+      ],
+      "model": "opencode/muse-spark-1.3-contributor-free"
     },
     "slice-review-fix": {
       "description": "Runs the implementation review stage of a slice workflow.",
       "mode": "subagent",
       "permissions": [
-        { "action": "*", "resource": "*", "effect": "deny" },
-        { "action": "read", "resource": "*", "effect": "allow" },
-        { "action": "glob", "resource": "*", "effect": "allow" },
-        { "action": "grep", "resource": "*", "effect": "allow" },
-        { "action": "edit", "resource": "*", "effect": "allow" },
+        {
+          "action": "*",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "read",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "glob",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "grep",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "edit",
+          "resource": "*",
+          "effect": "allow"
+        },
         {
           "action": "shell",
           "resource": "git status *",
           "effect": "allow"
         },
-        { "action": "shell", "resource": "git diff *", "effect": "allow" },
+        {
+          "action": "shell",
+          "resource": "git diff *",
+          "effect": "allow"
+        },
         {
           "action": "skill",
           "resource": "review-slice-implementation",
@@ -140,18 +303,46 @@
       "description": "Runs read-only implementation and test audit stages of a slice workflow.",
       "mode": "subagent",
       "permissions": [
-        { "action": "*", "resource": "*", "effect": "deny" },
-        { "action": "read", "resource": "*", "effect": "allow" },
-        { "action": "glob", "resource": "*", "effect": "allow" },
-        { "action": "grep", "resource": "*", "effect": "allow" },
+        {
+          "action": "*",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "read",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "glob",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "grep",
+          "resource": "*",
+          "effect": "allow"
+        },
         {
           "action": "shell",
           "resource": "git status *",
           "effect": "allow"
         },
-        { "action": "shell", "resource": "git diff *", "effect": "allow" },
-        { "action": "shell", "resource": "git log *", "effect": "allow" },
-        { "action": "shell", "resource": "git show *", "effect": "allow" },
+        {
+          "action": "shell",
+          "resource": "git diff *",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "git log *",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "git show *",
+          "effect": "allow"
+        },
         {
           "action": "skill",
           "resource": "audit-slice-implementation",

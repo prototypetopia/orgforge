@@ -2,7 +2,7 @@ import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Plugin } from '@opencode/plugin';
 
-import { SliceWorkflowRpc } from './rpc.js';
+import { SliceWorkflowRpc, TUI_STALE_MS } from './rpc.js';
 
 type LoopResult = 'CONTINUE' | 'WAITING_USER' | 'FAILED' | 'COMPLETE';
 type LoopStatus = 'running' | 'submitting' | 'resuming' | 'waiting_user';
@@ -235,13 +235,15 @@ export default Plugin.define({
   id: 'slice-workflow',
   async setup(ctx) {
     let disposed = false;
-    let tuiConnected = false;
+    // Recreated on every plugin hot reload, so a TUI that announced itself
+    // before the reload would otherwise look permanently absent.
+    let lastSeenAt = 0;
     const timers = new Map<string, ReturnType<typeof setTimeout>>();
     const activeLoops = new Map<string, LoopState>();
     const pendingPicks = new Map<string, (value: string | undefined) => void>();
     const rpc = await ctx.rpc.register(SliceWorkflowRpc, {
       tuiReady: async () => {
-        tuiConnected = true;
+        lastSeenAt = Date.now();
         return {};
       },
       select: async (input) => {
@@ -262,7 +264,9 @@ export default Plugin.define({
       options: readonly PickOption[],
       placeholder?: string
     ): Promise<string | undefined> => {
-      if (!tuiConnected || options.length === 0) return undefined;
+      if (Date.now() - lastSeenAt > TUI_STALE_MS || options.length === 0) {
+        return undefined;
+      }
       const requestID = crypto.randomUUID();
       let settle: (value: string | undefined) => void = () => {};
       const answer = new Promise<string | undefined>((resolve) => {
@@ -434,6 +438,15 @@ export default Plugin.define({
           const usage =
             'Usage: /slice-model <design|implement|review> <provider/model[#variant]>';
 
+          const catalogText = async () => {
+            const { data: available } = await ctx.model.list();
+            if (available.length === 0) {
+              return 'The model catalog returned no models. Restart the OpenCode service and retry /slice-model.';
+            }
+            const models = listModels(available);
+            return `Available models (${models.length}):\n${modelListText(models)}`;
+          };
+
           let role = roleName;
           if (!role) {
             const config = JSON.parse(await readFile(configPath, 'utf8')) as WorkflowConfig;
@@ -453,13 +466,23 @@ export default Plugin.define({
               }))
             );
             if (!picked || !(picked in roles)) {
-              await ctx.session.synthetic({ sessionID, text: `${assignments}\n\n${usage}` });
+              // No dialog to answer in, so give everything needed to choose in
+              // one pass: current assignments plus the whole catalog.
+              await ctx.session.synthetic({
+                sessionID,
+                text: `${assignments}\n\n${await catalogText()}\n\n${usage}`,
+              });
               return;
             }
             role = picked;
           }
 
           const { data: available } = await ctx.model.list();
+          if (available.length === 0) {
+            throw new Error(
+              'The model catalog returned no models. Restart the OpenCode service and retry /slice-model.'
+            );
+          }
           const models = listModels(available);
           if (!model) {
             const titles = disambiguateTitles(models);
@@ -476,7 +499,7 @@ export default Plugin.define({
             if (!picked) {
               await ctx.session.synthetic({
                 sessionID,
-                text: `${modelListText(models)}\n\nAssign with: /slice-model ${role} <provider/model[#variant]>`,
+                text: `${await catalogText()}\n\nAssign with: /slice-model ${role} <provider/model[#variant]>`,
               });
               return;
             }

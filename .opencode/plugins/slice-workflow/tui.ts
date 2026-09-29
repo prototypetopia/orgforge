@@ -1,14 +1,38 @@
 import { Plugin } from '@opencode/plugin/tui';
 
-import { SliceWorkflowRpc } from './rpc.js';
+import { SliceWorkflowRpc, TUI_HEARTBEAT_MS } from './rpc.js';
 
 export default Plugin.define({
   id: 'slice-workflow-tui',
   async setup(context) {
     const workflow = context.client.rpc(SliceWorkflowRpc);
     const location = context.location ?? context.data.location.default();
+    // A project plugin's RPC is only registered for its own location. Without
+    // this the server resolves the service default location instead, replies
+    // "rpc.unavailable", and every picker silently degrades to plain text.
+    const target = { location };
+    let warned = false;
+    const announce = () =>
+      workflow.tuiReady({}, target).then(
+        () => {
+          warned = false;
+        },
+        () => {
+          if (warned) return;
+          warned = true;
+          context.ui.toast.show({
+            title: 'Slice workflow',
+            message:
+              'Interactive pickers are unavailable; /slice-model will list models as text.',
+            variant: 'warning',
+          });
+        }
+      );
 
-    void workflow.tuiReady({}).catch(() => {});
+    // The host forgets this handshake whenever it reloads its own half of the
+    // plugin, so keep re-announcing instead of announcing only at startup.
+    void announce();
+    const heartbeat = setInterval(() => void announce(), TUI_HEARTBEAT_MS);
 
     const offStatus = workflow.events.on('status', (event) => {
       if (event.location.directory !== location.directory) return;
@@ -33,7 +57,7 @@ export default Plugin.define({
       };
       const respond = (value?: string) => {
         void workflow
-          .select({ requestID: request.requestID, value: value ?? '' })
+          .select({ requestID: request.requestID, value: value ?? '' }, target)
           .catch(() => {});
       };
       void context.ui.dialog
@@ -48,10 +72,11 @@ export default Plugin.define({
             value: option.footer ?? option.title,
           })),
         })
-        .then(respond);
+        .then(respond, () => respond(undefined));
     });
 
     return () => {
+      clearInterval(heartbeat);
       offStatus();
       offPick();
     };
