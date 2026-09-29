@@ -17,8 +17,8 @@
 ## Current Architecture
 - One long-lived Pulumi stack per AWS Organization; Pulumi Cloud or DIY (S3) backend with no framework dependence on Pulumi Cloud APIs (Sections 88-89).
 - Five layers: user configuration -> schema + semantic validation -> pure organization model -> Pulumi runtime model -> AWS resources; target resolution, account-set evaluation, OU traversal, dependency analysis, and most validation stay Pulumi-independent (Section 6).
-- Recommended repo layout with `config/`, `src/{types,model,runtime,organization,policies,identity-center,integrations,deployments,validation,naming}/`, `policies/`, `deployments/`, `test/` (Section 7, recommended/illustrative).
-- PRs run install, typecheck, unit tests, configuration validation, and Pulumi preview; organization modifications never auto-deploy from arbitrary branches; `npm run deploy` enforces org-safe defaults including constrained parallelism when account creation may occur (Sections 91-92, 62).
+- Recommended repo layout with `config/`, `src/{types,model,runtime,organization,policies,identity-center,integrations,deployments,validation,naming}/`, `policies/`, and `deployments/`; colocated tests per `AGENTS.md` and `TESTS.md` (Section 7 is illustrative).
+- PRs run install, typecheck, `pnpm test:unit` and `pnpm test:mock`, configuration validation, and Pulumi preview; organization modifications never auto-deploy from arbitrary branches; `pnpm run deploy` maps to `pulumi up --parallel 5` (Sections 91-92, 62).
 - `pulumi preview` is mandatory; high-risk previews (account replacement/removal, OU deletion/move, SCP and service-access changes, access removal, StackSet/StackInstances/management-stack/trusted-access deletion) get explicit review; drift guidance uses refresh plus preview with documented StackSet limitations; no automatic adoption of unmanaged resources (Sections 93, 96, 78).
 
 ## Constraints
@@ -44,16 +44,19 @@
 - 2026-09-28 Recorded from source; original decision date unknown: Platform-behavior conflicts are resolved by verifying current docs/API, documenting the conflict, and following verified behavior (Section 119 rule 50).
 
 ## Implementation Status
-- Done: nothing (workstream initialization only).
+- Done: nothing. No slice has moved past `Stage: Stub`.
 - In progress: nothing.
-- Not started: project scaffolding, provider pinning, naming helpers, validation framework, state/auth/CI wiring, safe deploy script, protection defaults, drift and consistency documentation, testing harness.
+- Not started: all eight slices, in execution order (01 project scaffold and provider pin, 02 test harness, 03 layered architecture and validation framework, 06 naming conventions, 04 Pulumi ownership and safety defaults, 05 state and authentication, 07 safe deploy and CI gates, 08 operations documentation).
+- Canonical task state: `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-next-steps.md`.
 
 ## Risks / Gaps
-- Pinned `@pulumi/aws` version is TBD at decomposition time; supported policy types, template limits, dependency counts, and OU-target limits all depend on it (Index Open Questions 1-3).
-- Exact safe parallelism value and deploy script form are TBD pending implementation (Index Open Question 4).
+- Foundation pins and records `@pulumi/aws` at implementation; the owning siblings verify policy types, template limits, dependency counts, OU-target limits, SDK gaps, and operation preferences against that version (Index Open Questions 1-3; DEC-008).
+- Safe deploy command decided: `pnpm run deploy` runs `pulumi up --parallel 5` (DEC-006).
 - Illustrative Section 100 field shapes may need normalization during `/refine-prd` (Index Open Question 7).
 - Sibling workstreams depend on the validation framework and protection defaults defined here; sequencing puts this workstream first.
-- Per-account parameter spike, cross-output design, and audit command scoping (v1 vs deferred) remain open (Index Open Questions 5-6).
+- Per-account parameter and cross-output designs are design-only v1 deliverables in the deployments workstream; their implementations and the audit command remain deferred (DEC-006). The decomposition index and deployments PRD are stale on this point and are not slice input here (DEC-009).
+- CI platform, CI credential mechanism, and the repository's backend selection are unchosen; the deploy/CI slice ships scripts and a provider-agnostic gate order only (DEC-010).
+- The index maps the purity rule (Section 6 second clause, rules 13-14) to `aws-organization-as-code-account-targeting`, so foundation's slice 03 owns the layer skeleton and validator framework, not the mechanical no-Pulumi-import guard.
 
 ## Related Docs
 - `sessions/aws-organization-as-code-source-prd.md`
