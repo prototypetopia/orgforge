@@ -89,3 +89,30 @@
 - **Decision:** Scope the CI and deploy slice to `package.json` scripts plus a provider-agnostic gate-order definition. Leave the CI platform, the CI credential mechanism, and the repository's backend selection as explicit TBDs in the slice's Open Questions for `/refine-plan`.
 - **Consequences:** Slice 07 cannot produce a pipeline file until the platform is chosen; the safe command and gate order can be implemented and verified now. OIDC or any other CI credential mechanism stays unasserted because no evidence names it.
 - **Related files/plans:** `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-05-state-and-authentication.md`, `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-07-safe-deploy-and-ci-gates.md`, Source Sections 88-92
+
+## Decision
+- **ID:** DEC-011
+- **Date:** 2026-09-30
+- **Status:** accepted
+- **Context:** DEC-002 requires a pinned `@pulumi/aws` version and DEC-006 assigns recording that pin to the foundation workstream, but the version and the record mechanism were undecided. No repo file named a version.
+- **Decision:** Pin `@pulumi/aws` 7.48.0 (exact, no range) with `@pulumi/pulumi` 3.265.0, and treat the root `package.json` dependency value as the single readable version record. `src/provider-version.ts` reads that JSON and exports `PINNED_AWS_VERSION`; no copied literal. `scripts/check-provider-version.mjs` enforces manifest/lockfile agreement (root importer specifier and resolution, one distinct resolved AWS version including peer-suffixed entries, supported `lockfileVersion` major) and runs before `tsc --noEmit` in `pnpm typecheck`.
+- **Consequences:** Siblings derive unions and limits from 7.48.0 and must re-check on upgrade (DEC-002). Mismatched, ranged, missing, null/scalar, or multi-version records fail typecheck with actionable path/package diagnostics and no silent fallback. Capability verification of 7.48.0 remains with the owning siblings (DEC-008).
+- **Related files/plans:** `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-01-project-scaffold-and-provider-pin.md`, `package.json`, `scripts/check-provider-version.mjs`, `src/provider-version.ts`
+
+## Decision
+- **ID:** DEC-012
+- **Date:** 2026-09-30
+- **Status:** accepted
+- **Context:** `AGENTS.md` states Node.js 22+ and pnpm 10.x. The user explicitly selected Node 24 and the latest published pnpm for this scaffold, and pnpm 12 changed the lockfile layout the guard must parse.
+- **Decision:** Scaffold targets `engines.node: ">=24 <25"` and `packageManager: "pnpm@12.8.1"` (`.node-version` = 24). The guard supports `lockfileVersion` 9 only. `AGENTS.md` is intentionally left at its old wording pending explicit approval; this decision overrides its toolchain baseline for this repository.
+- **Consequences:** Regenerating the lockfile with another pnpm major is not an acceptable fix; mismatched engine or package-manager fields fail checks. `AGENTS.md` § Environment and its command list are now inaccurate and need an approved correction.
+- **Related files/plans:** `AGENTS.md`, `package.json`, `.node-version`, `scripts/check-provider-version.mjs`
+
+## Decision
+- **ID:** DEC-013
+- **Date:** 2026-09-30
+- **Status:** accepted
+- **Context:** Slice 01 acceptance requires an empty `pulumi preview` against an operator-selected backend and stack. No Pulumi CLI, backend, or stack choice exists in this repo, and backend selection is owned by slice 05 (DEC-010).
+- **Decision:** The user explicitly approved deferring the empty preview to slice 05, recorded as unrun and not a slice 01 completion gate.
+- **Consequences:** Slice 01 closes without preview evidence; slice 05 must run it. The obligation is deferred, not waived, and preview remains mandatory before applying organization changes (`AGENTS.md` Preview Is Mandatory). No backend, credential strategy, or `pulumi up` is authorized by this decision.
+- **Related files/plans:** `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-01-project-scaffold-and-provider-pin.md`, `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-05-state-and-authentication.md`

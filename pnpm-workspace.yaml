@@ -1,0 +1,9 @@
+allowBuilds:
+  protobufjs: false
+
+# `pnpm run`/`pnpm exec` must not install or repair dependencies first. The
+# provider pin is recorded in `package.json` and `pnpm-lock.yaml` and checked by
+# `scripts/check-provider-version.mjs`, so an implicit repair before that check
+# would hide exactly the staleness the guard must report. `pnpm install` stays
+# an explicit, separate step.
+verifyDepsBeforeRun: false

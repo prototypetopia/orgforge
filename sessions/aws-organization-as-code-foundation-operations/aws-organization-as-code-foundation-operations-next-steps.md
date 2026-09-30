@@ -2,7 +2,7 @@
 
 **Owner:** TBD
 **Status:** Active
-**Last updated:** 2026-09-29
+**Last updated:** 2026-09-30
 **Related plan:** `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-prd.md`
 **Stage legend:** `Stub` = breakdown draft, `Refined` = implementation-ready,
 `In Progress` = active build, `Done` = completed
@@ -10,24 +10,10 @@
 ---
 
 ## Now
-- [ ] Refine the project scaffold and provider pin slice, then implement it
-  - Stage: `Stub`
-  - Scope: project scaffold, `@pulumi/aws` pin and version record, typecheck
-  - Depends on: None
-  - Acceptance:
-    - [ ] Exact `@pulumi/aws` version selected, resolved in `pnpm-lock.yaml`,
-          and recorded in one readable location
-    - [ ] `pnpm install` and `pnpm typecheck` succeed
-    - [ ] `Pulumi.yaml` plus a minimal `src/index.ts` let `pulumi preview` run
-          against an empty configuration
-  - Validation: TBD during refine-plan
-  - Links: `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-01-project-scaffold-and-provider-pin.md`, `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-prd.md#requirements`
-
-## Next
 - [ ] Test harness with the two tiers
   - Stage: `Stub`
   - Scope: Vitest, `test:unit` / `test:mock` / `test`, one exemplar per tier
-  - Depends on: `01-project-scaffold-and-provider-pin`
+  - Depends on: `01-project-scaffold-and-provider-pin` (Done)
   - Acceptance:
     - [ ] `pnpm test:unit` runs only `*.unit.test.ts`; `pnpm test:mock` runs
           only `*.mock.test.ts`
@@ -35,6 +21,8 @@
     - [ ] No live-AWS tier is introduced
   - Validation: TBD during refine-plan
   - Links: `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-02-test-harness-two-tiers.md`, `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-prd.md#api-contracts-high-level`
+
+## Next
 - [ ] Layered architecture skeleton and validation framework
   - Stage: `Stub`
   - Scope: layer directories, `ValidationError`, validator aggregation,
@@ -123,6 +111,33 @@
   - Links: `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-08-operations-documentation.md`, `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-prd.md#acceptance-criteria`
 
 ## Done
+- [x] Project scaffold and provider pin
+  - Stage: `Done`
+  - Scope delivered: Node 24 / pnpm 12.8.1 scaffold (`package.json`, `.node-version`,
+    `tsconfig.json`, `.gitignore`, `Pulumi.yaml`, `config/.gitkeep`,
+    `src/index.ts`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`), approved
+    `@pulumi/aws` 7.48.0 pin, `src/provider-version.ts` manifest reader,
+    `scripts/check-provider-version.mjs` lockfile-consistency guard wired ahead
+    of `tsc --noEmit` in `pnpm typecheck`
+  - Acceptance:
+    - [x] `@pulumi/aws` 7.48.0 in root manifest matches the lockfile root
+          resolution and a single distinct resolved version
+    - [x] `pnpm install` and `pnpm typecheck` succeed on Node 24 / pnpm 12.8.1
+    - [x] Shared version export reads root `package.json`, not a copied pin
+    - [x] Missing/invalid/mismatched records and multiple versions fail
+          `pnpm typecheck` nonzero with actionable diagnostics in isolated copies
+    - [ ] Deferred to slice 05, unrun and not a slice 01 gate: empty
+          `pulumi preview` with an operator-selected backend/stack
+  - Validation: `pnpm typecheck` rerun 2026-09-30 exits 0 (guard reports pin and
+    resolution `7.48.0`); recorded install, reader, structural, and 25 isolated
+    consistency-failure scenarios in workflow attempt reports 11 and 22; test
+    coverage audit `CLEAN` in attempt 23; slice workflow reached
+    `status: complete`, step 10, terminal step 9 outcome `advisory`
+    (attempt 24). No Vitest tier exists yet (slice 02 owns it).
+  - Follow-up: `AGENTS.md` § Environment still says "Node.js 22+, pnpm 10.x" and
+    its command list still includes script names slice 01 does not own; both need
+    explicit user approval to correct.
+  - Links: `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-01-project-scaffold-and-provider-pin.md`
 
 ## Notes
 - Cross-file reconciliation still owed: the decomposition index and the

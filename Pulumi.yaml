@@ -1,0 +1,5 @@
+name: orgforge
+runtime:
+  name: nodejs
+  options:
+    typescript: true

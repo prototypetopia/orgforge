@@ -42,15 +42,36 @@
 - 2026-09-28 Recorded from source; original decision date unknown: Conservative account-creation parallelism (`pulumi up --parallel 5` or lower) via the safe deployment script and CI (Sections 62, 92).
 - 2026-09-28 Recorded from source; original decision date unknown: Validation precedes dependent resources with actionable errors (Section 82).
 - 2026-09-28 Recorded from source; original decision date unknown: Platform-behavior conflicts are resolved by verifying current docs/API, documenting the conflict, and following verified behavior (Section 119 rule 50).
+- 2026-09-30 `@pulumi/aws` pinned to exact `7.48.0` with `@pulumi/pulumi` 3.265.0;
+  root `package.json` is the single version record and the lockfile guard enforces
+  agreement, failing explicitly on mismatch or multiple resolved versions
+  (DEC-011). This is the pin that governs behavior for all siblings.
+- 2026-09-30 Toolchain is Node 24 (`engines.node ">=24 <25"`, `.node-version` 24)
+  with `pnpm@12.8.1` and `lockfileVersion` 9 only, overriding the `AGENTS.md`
+  Node 22+ / pnpm 10.x baseline for this repo (DEC-012). `AGENTS.md` still
+  carries the old wording.
+- 2026-09-30 The empty `pulumi preview` for this scaffold is deferred to slice 05
+  and recorded unrun: not a slice 01 gate, not waived, and preview stays
+  mandatory before organization changes (DEC-013).
 
 ## Implementation Status
-- Done: nothing. No slice has moved past `Stage: Stub`.
+- Done: slice 01 project scaffold and provider pin (`Stage: Done`; workflow
+  `status: complete`, step 10, terminal step 9 outcome `advisory`). Delivers
+  `package.json`, `.node-version`, `tsconfig.json`, `.gitignore`, `Pulumi.yaml`,
+  `config/.gitkeep`, `src/index.ts`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`,
+  `src/provider-version.ts`, and `scripts/check-provider-version.mjs`, with
+  `pnpm typecheck` running the guard before `tsc --noEmit`.
 - In progress: nothing.
-- Not started: all eight slices, in execution order (01 project scaffold and provider pin, 02 test harness, 03 layered architecture and validation framework, 06 naming conventions, 04 Pulumi ownership and safety defaults, 05 state and authentication, 07 safe deploy and CI gates, 08 operations documentation).
+- Not started: the remaining seven slices, in execution order (02 test harness,
+  03 layered architecture and validation framework, 06 naming conventions,
+  04 Pulumi ownership and safety defaults, 05 state and authentication,
+  07 safe deploy and CI gates, 08 operations documentation).
 - Canonical task state: `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-next-steps.md`.
 
 ## Risks / Gaps
-- Foundation pins and records `@pulumi/aws` at implementation; the owning siblings verify policy types, template limits, dependency counts, OU-target limits, SDK gaps, and operation preferences against that version (Index Open Questions 1-3; DEC-008).
+- Foundation pinned and recorded `@pulumi/aws` 7.48.0 (DEC-011); the owning siblings must still verify policy types, template limits, dependency counts, OU-target limits, SDK gaps, and operation preferences against that version (Index Open Questions 1-3; DEC-008).
+- `AGENTS.md` § Environment (Node 22+ / pnpm 10.x) and its command list (`lint`, `format`, `test:unit`, `test:mock`, `validate`, `deploy`) now disagree with the repository; the correct Node 24 / pnpm 12.8.1 selection is DEC-012. Correcting `AGENTS.md` needs explicit user approval, and the script gap closes as slices 02, 03, and 07 land.
+- The empty `pulumi preview` remains unrun and is slice 05's obligation (DEC-013), so no slice 01 evidence of a loadable Pulumi program exists yet.
 - Safe deploy command decided: `pnpm run deploy` runs `pulumi up --parallel 5` (DEC-006).
 - Illustrative Section 100 field shapes may need normalization during `/refine-prd` (Index Open Question 7).
 - Sibling workstreams depend on the validation framework and protection defaults defined here; sequencing puts this workstream first.

@@ -1,55 +1,62 @@
 # Session Handoff (Latest)
 
 ## Date
-- 2026-09-29
+- 2026-09-30
 
 ## Summary of What Changed
-- Refined the foundation PRD a third time and applied all proposed corrections: added the Section 2.3 Pulumi ownership boundary, replaced the invented "source locators" error field with the `AGENTS.md` structured error shape, moved protection verification to the owning workstreams, and corrected the rollout plan's over-specified test-organization requirement.
-- Recorded DEC-008 (org-structure owns OU aliases; foundation pins the provider but does not verify sibling capability surfaces) and DEC-009/DEC-010 (stale index rows are not slice input; CI platform, CI credentials, and backend stay TBD).
-- Ran `/prd-breakdown`: created the canonical checklist and eight Stage 1 slice plans, all `Status: Planned` / `Stage: Stub`.
-- No implementation, tests, or preview were run; the repo still has no `package.json`, `Pulumi.yaml`, or `src/`.
+- Ran the full `slice-workflow` pipeline for slice 01 (24 iterations) and closed it: workflow state is `status: complete`, step 10, terminal step 9 outcome `advisory`.
+- Slice 01 delivered the project scaffold and provider pin: root `package.json` (exact `@pulumi/aws` 7.48.0, `@pulumi/pulumi` 3.265.0, `engines.node ">=24 <25"`, `packageManager pnpm@12.8.1`, single `typecheck` script), `.node-version` (`24`), `tsconfig.json` (strict, `noEmit`, `@/*` -> `./src/*`), `.gitignore`, `Pulumi.yaml` (`orgforge`, nodejs runtime with TypeScript), `config/.gitkeep`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `src/index.ts`, `src/provider-version.ts` (reads the root manifest, no copied literal), and `scripts/check-provider-version.mjs` (lockfile-consistency guard run before `tsc --noEmit`).
+- Resolved and logged three decisions: DEC-011 (provider pin and manifest-as-version-record), DEC-012 (Node 24 / pnpm 12.8.1 toolchain, `lockfileVersion` 9 only), DEC-013 (empty `pulumi preview` deferred to slice 05, recorded unrun, not waived).
+- `AGENTS.md` was not edited: it is approval-gated documentation, and its Environment section now disagrees with the implemented toolchain.
 
 ## Current State
-- Completed: workstream initialization, three PRD refinement passes, breakdown into eight slice stubs.
-- In progress: nothing.
-- Blocked: nothing. Two open reconciliation items are recorded as risks, not blockers.
+- Completed: slice 01 project scaffold and provider pin (`Stage: Done`), verified by the implementation, review, audit, and test stages plus a documentation pass.
+- In progress: nothing. Slice 02 is the next candidate and is still `Stage: Stub`.
+- Blocked: nothing.
 
 ## Next 3 Tasks
-1. `/refine-plan` slice 01, then implement it — `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-01-project-scaffold-and-provider-pin.md`. Must decide the exact `@pulumi/aws` version and the pinned-version record mechanism.
-2. `/refine-plan` slice 02 — `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-02-test-harness-two-tiers.md`. Must decide whether the mock tier shares a Vitest process with the unit tier.
-3. `/refine-plan` slice 03 — `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-03-layered-architecture-and-validation-framework.md`. Must decide the validator signature and registration mechanism before any sibling depends on it.
+1. `/refine-plan` slice 02, then implement it — `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-02-test-harness-two-tiers.md`. Must decide whether the mock tier shares a Vitest process with the unit tier, and add the `test:unit` / `test:mock` / `test` scripts the guard already leaves room for.
+2. `/refine-plan` slice 03 — `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-03-layered-architecture-and-validation-framework.md`. Must fix the validator signature and registration mechanism plus `pnpm validate` before slice 04/06 depend on it.
+3. `/refine-plan` slice 06 — `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-06-naming-conventions.md`. Needs the unit-test tier from slice 02, and must create no alias registry (DEC-008).
 
 ## Validation State
-- Lint: not run
-- Typecheck: not run
-- Tests: not run
-- Notes: documentation-only work. No code exists yet, so no validation command is meaningful.
+- Install: `pnpm install --frozen-lockfile` passes twice on Node 24.13.0 / pnpm 12.8.1; lockfile unchanged between runs (workflow attempts 11 and 22).
+- Typecheck: `pnpm typecheck` passes; rerun independently 2026-09-30 exits 0 with `check-provider-version: @pulumi/aws is pinned to 7.48.0 in package.json and resolves to 7.48.0 in pnpm-lock.yaml`.
+- Tests: not run. No Vitest harness or test script exists; slice 01 deliberately defers it to slice 02. Its equivalent verification was 25 isolated CLI consistency scenarios plus reader/structural inspection, all passing, audited `CLEAN` in attempt 23.
+- Lint/format: not run. No ESLint or Prettier setup exists yet, and slice 01 does not own it.
+- `pulumi preview`: not run. Deferred to slice 05 by explicit approval (DEC-013); not waived and not a slice 01 gate.
 
-## Open Questions
-- Which `@pulumi/aws` version is selected, and what is its verified capability surface? (PRD Open Question 1; sibling-owned verification per DEC-008)
-- Pinned-version record mechanism: generated constant, build-time injected, or `package.json` lookup at runtime?
-- Pulumi language runtime: `ts-node` versus a compiled output directory referenced from `Pulumi.yaml`?
-- Validator input signature and how sibling workstreams register validators.
-- Resource-class identifier shape for the protection policy, and the explicit-unprotect mechanism for decommissioning.
-- CI platform, CI credential mechanism (OIDC appears in no evidence), and this repository's backend choice.
-- Does the mechanical no-Pulumi-import guard belong to foundation's slice 03 or to account-targeting, which the index maps as its owner?
-- Cross-file: the decomposition index and deployments PRD still mark the design-only v1 spikes `Deferred`/`N/A`; they need updating to match DEC-006 (DEC-009).
+## Unresolved Questions
+- Should `AGENTS.md` § Environment be corrected to Node 24 / pnpm 12.8.1, and should its command list be trimmed to scripts that exist? Needs user approval; the decision is recorded, the doc edit is not (DEC-012).
+- Does the mock tier share a Vitest process with the unit tier? (slice 02 refine)
+- Validator input signature and how sibling workstreams register validators? (slice 03 refine)
+- CI platform, CI credential mechanism, and this repository's backend choice remain TBD (DEC-010); the empty preview cannot run until a backend and stack are selected (DEC-013).
+- Cross-file reconciliation still owed: the decomposition index and the deployments PRD still mark the design-only v1 spikes `Deferred` / `N/A` against DEC-006 (DEC-009).
+- `AGENTS.md` Build/Lint/Test still lists `lint`, `format`, `test:*`, `validate`, and `deploy`; each closes as slices 02, 03, and 07 land, not as slice 01 drift.
 
 ## Important File References
 - `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-next-steps.md`
-- `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-prd.md`
 - `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-01-project-scaffold-and-provider-pin.md`
-- `sessions/aws-organization-as-code-foundation-operations/decision-log.md`
-- `sessions/aws-organization-as-code-source-prd.md`
-- `sessions/aws-organization-as-code-prd-decomposition.md`
+- `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-02-test-harness-two-tiers.md`
+- `sessions/aws-organization-as-code-foundation-operations/decision-log.md` (DEC-011, DEC-012, DEC-013)
+- `sessions/aws-organization-as-code-foundation-operations/workflow-reports/aws-organization-as-code-foundation-operations-01-workflow-attempt-24-b796ee0f3f3e4ec0bfac50c84ad7aa46.md`
+- `scripts/check-provider-version.mjs`, `src/provider-version.ts`, `package.json`
+- `AGENTS.md`, `TESTS.md`, `docs/decision-authority.md`
 
 ## Bootstrap Prompt
 Read `sessions/aws-organization-as-code-foundation-operations/context.md` and
 `sessions/aws-organization-as-code-foundation-operations/latest.md`, then
 `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-next-steps.md`.
 
-Continue with `/refine-plan` on slice 01
-(`aws-organization-as-code-foundation-operations-01-project-scaffold-and-provider-pin.md`).
-Its open decisions are the exact `@pulumi/aws` version to pin and how the
-pinned version is recorded for reuse in error messages. Every other slice
-consumes the project skeleton and the pin it produces, so it goes first.
+Slice 01 is Done: the Node 24 / pnpm 12.8.1 scaffold and the exact
+`@pulumi/aws` 7.48.0 pin are in place, and `pnpm typecheck` runs the
+lockfile-consistency guard before `tsc --noEmit`. The required empty
+`pulumi preview` stays unrun and is slice 05's obligation.
+
+Continue with `/refine-plan` on slice 02
+(`aws-organization-as-code-foundation-operations-02-test-harness-two-tiers.md`),
+which must decide whether the mock tier shares a Vitest process with the unit
+tier, then `/refine-plan` on slice 03 and slice 06. Two things need an explicit
+answer when convenient: whether `AGENTS.md` may be corrected to Node 24 /
+pnpm 12.8.1, and the backend plus stack choice that slice 05 needs before the
+deferred preview can run.

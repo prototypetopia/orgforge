@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // Slice pipeline model routing (/slice-model):
+  // design = steps 0-3, implement = steps 4/7/9, review = steps 5/6/8
+  "agents": {
+    // design
+    "slice-design-readonly": { "mode": "subagent", "model": "opencode-go/glm-5.3-flash" },
+    "slice-design-edit": { "mode": "subagent", "model": "opencode-go/glm-5.3-flash" },
+    // implement
+    "slice-implement-code": { "mode": "subagent", "model": "opencode-go/space-bunny-free" },
+    "slice-implement-tests": { "mode": "subagent", "model": "opencode-go/space-bunny-free" },
+    "slice-implement-docs": { "mode": "subagent", "model": "opencode-go/space-bunny-free" },
+    // review
+    "slice-review-fix": { "mode": "subagent", "model": "opencode-go/glm-5.3-flash" },
+    "slice-review-audit": { "mode": "subagent", "model": "opencode-go/glm-5.3-flash" },
+  },
+}
