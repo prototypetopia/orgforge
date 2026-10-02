@@ -9,7 +9,10 @@
   },
   "packageManager": "pnpm@12.8.1",
   "scripts": {
-    "typecheck": "node scripts/check-provider-version.mjs && tsc --noEmit"
+    "typecheck": "node scripts/check-provider-version.mjs && tsc --noEmit",
+    "test:unit": "vitest run unit.test",
+    "test:mock": "vitest run mock.test",
+    "test": "vitest run"
   },
   "dependencies": {
     "@pulumi/aws": "7.48.0",
@@ -19,6 +22,7 @@
     "@types/node": "24.19.0",
     "js-yaml": "4.3.2",
     "ts-node": "10.9.2",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "5.0.3"
   }
 }

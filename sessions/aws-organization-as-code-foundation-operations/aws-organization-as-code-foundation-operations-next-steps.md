@@ -2,7 +2,7 @@
 
 **Owner:** TBD
 **Status:** Active
-**Last updated:** 2026-09-30
+**Last updated:** 2026-10-02
 **Related plan:** `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-prd.md`
 **Stage legend:** `Stub` = breakdown draft, `Refined` = implementation-ready,
 `In Progress` = active build, `Done` = completed
@@ -10,17 +10,7 @@
 ---
 
 ## Now
-- [ ] Test harness with the two tiers
-  - Stage: `Stub`
-  - Scope: Vitest, `test:unit` / `test:mock` / `test`, one exemplar per tier
-  - Depends on: `01-project-scaffold-and-provider-pin` (Done)
-  - Acceptance:
-    - [ ] `pnpm test:unit` runs only `*.unit.test.ts`; `pnpm test:mock` runs
-          only `*.mock.test.ts`
-    - [ ] Both tiers pass with no AWS credentials
-    - [ ] No live-AWS tier is introduced
-  - Validation: TBD during refine-plan
-  - Links: `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-02-test-harness-two-tiers.md`, `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-prd.md#api-contracts-high-level`
+- (none — slice 02 completed and moved to Done; next items are in ## Next)
 
 ## Next
 - [ ] Layered architecture skeleton and validation framework
@@ -111,6 +101,38 @@
   - Links: `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-08-operations-documentation.md`, `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-prd.md#acceptance-criteria`
 
 ## Done
+- [x] Test harness with the two tiers
+  - Stage: `Done`
+  - Scope delivered: exact `vitest` 5.0.3 devDependency and `test:unit` /
+    `test:mock` / `test` scripts in `package.json`; root `vitest.config.ts`
+    (`test.include` exactly `src/**/*.unit.test.ts` + `src/**/*.mock.test.ts`,
+    `@/*` alias); `src/provider-version.unit.test.ts`;
+    `src/runtime/set-mocks.mock.test.ts`; lockfile regenerated with the
+    auto-installed `vite@8.3.2` peer (no other dependency change)
+  - Acceptance:
+    - [x] `pnpm test:unit` runs only `*.unit.test.ts`; `pnpm test:mock` runs
+          only `*.mock.test.ts`
+    - [x] Both tiers pass with no AWS credentials
+    - [x] No live-AWS tier is introduced
+  - Validation: slice workflow `status: complete`, step 10, step 9 outcome
+    `advisory` (15 iterations, 2026-10-02). Criteria verified across review
+    (attempt 11) and both audits (attempts 12, 14) plus a fresh rerun at
+    session save: `pnpm typecheck` exit 0 (guard reports the exact
+    `@pulumi/aws` 7.48.0 pin with a single resolution), `pnpm test:unit`,
+    `pnpm test:mock`, and `pnpm test` all exit 0 with tier selection proven
+    suffix-exclusive via `--reporter=verbose`, and a credential-isolated rerun
+    (all `AWS_*` unset, config/credential files pointed at absent paths)
+    passed. Two evidence-driven corrections recorded in DEC-014: the pinned
+    provider exposes flat named exports (no `import { aws }` wrapper —
+    `TS2305`), and `resolve.alias` uses absolute `resolve(__dirname, 'src')`.
+  - Follow-up: `AGENTS.md`/`TESTS.md` still document the non-compiling
+    `import { aws } from '@pulumi/aws'` style, and `AGENTS.md` § Environment
+    still says Node 22+ / pnpm 10.x; both need explicit user approval to
+    correct (DEC-012). Of the command list, `test:unit` / `test:mock` / `test`
+    are now real; `lint`, `format`, `validate`, `deploy` close as slices 03
+    and 07 land.
+  - Links: `sessions/aws-organization-as-code-foundation-operations/aws-organization-as-code-foundation-operations-02-test-harness-two-tiers.md`, `sessions/aws-organization-as-code-foundation-operations/workflow-reports/aws-organization-as-code-foundation-operations-02-workflow-attempt-15-c7d40f8e-709d-4425-ad9d-e0704d7555e5.md`
+
 - [x] Project scaffold and provider pin
   - Stage: `Done`
   - Scope delivered: Node 24 / pnpm 12.8.1 scaffold (`package.json`, `.node-version`,
